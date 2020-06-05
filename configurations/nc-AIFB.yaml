@@ -1,0 +1,10 @@
+dataset: AIFB
+epochs: 1000
+learn_rate: 0.001
+hid_units: 16
+weight_reg: block
+bases: 10
+use_cuda: True
+optimiser: adam
+weight_decay: 0.0
+dropout: 0.6
