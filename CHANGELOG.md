@@ -26,8 +26,8 @@ Initial public release of Torch-RGCN.
 - Added setup.sh.
 - Added CHANGELOG.
 - Added LICENSE.
+- Added AIFB, AM, BGS, FB15k, FB15k-237, MUTAG, WN18 and WN18RR to data.
 - Added unit tests under [tests](tests).
 - Added scripts for node classification and link prediction under [experiments](experiments).
-- Added AIFB, AM, BGS, FB15k, FB15k-237, MUTAG, WN18 and WN18RR under [data](data).
 - Added hyperparamter settings under [configurations](configurations).
 - Added RGCN module under [rgcn](rgcn).
