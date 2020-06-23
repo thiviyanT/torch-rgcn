@@ -1,51 +1,51 @@
 from misc import create_experiment
 from rgcn.models import NodeClassifier
 from data import load_node_classification_data
+from sklearn.metrics import accuracy_score
+import torch.nn as nn
 import torch
+import time
 
 """ 
 Relational Graph Convolution Network for node classification. 
 Reproduced as described in https://arxiv.org/abs/1703.06103 (Section 3).
 """
 
-# TODO: Create sparse matrix multiplication!
-# TODO: Row-wise normalisation!
-# TODO: Rewrite data loader - Low priority
-
-# Create sacred experiment observer
+# Create sacred experiment for experiment tracking
 ex = create_experiment(name='R-GCN Node Classification', database='node_class')
 
 
 @ex.config
 def exp_config():
-    """ Declare default configurations for node classification experiment """
+    """ Declare default configs for node classification experiment """
+    model = 'standard-nc'  # Default model to be used
     dataset = 'aifb'  # Name of the dataset
-    epochs = 1000  # Number of message passing iterations
+    epochs = 50  # Number of training epochs
     learn_rate = 1e-3  # Learning rate for optimiser
     hid_units = 16  # Size of the hidden layer
-    weight_reg = 'block'  # Type of weight regularisation (basis decomposition or block diagonal decomposition)
-    num_bases = 10  # Number of bases for basis decomposition
     use_cuda = True  # If true, model training is performed on GPU if they are available
     optimiser = 'adam'  # Type of learning optimiser
+    decomposition = None  # Weight decomposition (type of decomposition, number of basis/blocks)
+    edge_dropout = None  # Edge dropout rates (general, self-loop)
     weight_decay = 0.0  # Weight decay
-    dropout = 0.6  # Dropout rate for RGCN
+    test_run = False  # If true, test set is used for evaluation. If False, validation set is used for evaluation.
 
 
 @ex.automain
-def train_model(dataset,
+def train_model(model,
+                dataset,
                 hid_units,
                 optimiser,
                 learn_rate,
                 weight_decay,
-                weight_reg,
-                num_bases,
-                dropout,
+                decomposition,
                 epochs,
                 use_cuda,
+                test_run,
                 _run):
 
-    # Load Train and Test data  # TODO: Check why node classification data do not have validation sets
-    edges, (n2i, i2n), (r2i, i2r), train, test = load_node_classification_data(dataset)
+    # Note: Validation dataset will be used as test if this is not a test run
+    triples, (n2i, i2n), (r2i, i2r), train, test = load_node_classification_data(dataset, use_test_set=test_run)
 
     # Check for available GPUs
     use_cuda = use_cuda and torch.cuda.is_available()
@@ -65,46 +65,56 @@ def train_model(dataset,
     classes = set([int(l) for l in test_lbl] + [int(l) for l in train_lbl])
     num_classes = len(classes)
     num_nodes = len(n2i.values())
-    num_relations = len(edges)
+    num_relations = len(triples)
 
-    # Declare model here
-    model = NodeClassifier(
-        edges,
-        num_nodes,
-        num_relations,
+    if model == 'standard-nc':
+        model = NodeClassifier
+    else:
+        raise NotImplementedError(f'\'{model}\' model has not been implemented!')
+
+    model = model(
+        triples=triples,
+        nnodes=num_nodes,
+        nrel=num_relations,
         nclass=num_classes,
         nhid=hid_units,
-        decomp=weight_reg,
-        nbases=num_bases,
-        dropout=dropout,
+        decomposition=decomposition,
         device=device)
 
     if use_cuda:
         model.cuda()
 
     if optimiser == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), lr=learn_rate, weight_decay=weight_decay)
+        optimiser = torch.optim.Adam
     elif optimiser == 'adamw':
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learn_rate, weight_decay=weight_decay)
+        optimiser = torch.optim.AdamW
     else:
-        raise NameError(f"'{optimiser}' optimiser has not been recognised!")
+        raise NotImplementedError(f'\'{optimiser}\' optimiser has not been implemented!')
 
-    print("Start training...")
+    optimiser = optimiser(model.parameters(), lr=learn_rate, weight_decay=weight_decay)
+
+    print("Starting training...")
     for epoch in range(epochs):
-        print("Training")
-        optimizer.zero_grad()
+        t1 = time.time()
+        criterion = nn.CrossEntropyLoss()
         model.train()
+        optimiser.zero_grad()
+        output = model()[train_idx, :]
+        loss = criterion(output, train_lbl)
+        train_accuracy = accuracy_score(output.argmax(dim=-1), train_lbl)
+        loss.backward()
+        optimiser.step()
+        t2 = time.time()
 
-        if use_cuda:
-            pass
-
-        out = model(train_idx)
-        loss = 0
-
-        # Log loss
         _run.log_scalar("training.loss", loss.item(), step=epoch)
+        _run.log_scalar("training.accuracy", train_accuracy, step=epoch)
+        print(f'Epoch {epoch}: Train Accuracy: {train_accuracy} Loss: {loss.item()} Time: {(t2 - t1):.3f}')
 
     print('Training is complete!')
 
-    print("Start testing:")
     # Test model on test data
+    print("Starting evaluation on test data...")
+    test_output = output[test_idx, :]
+    test_accuracy = accuracy_score(test_output.argmax(dim=-1), test_lbl)
+    _run.log_scalar("test.accuracy", test_accuracy, step=epochs)
+    print(f'Evaluation: Test Accuracy: {test_accuracy}')

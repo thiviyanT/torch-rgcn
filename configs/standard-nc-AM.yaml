@@ -1,0 +1,11 @@
+model: standard-nc
+dataset: AM
+hid_units: 10
+use_cuda: False
+epochs: 50
+learn_rate: 0.01
+optimiser: adam
+weight_decay: 0.0
+decomposition:
+  type: basis
+  num_bases: 40

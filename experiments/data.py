@@ -4,9 +4,6 @@ import gzip, os, wget, pickle, tqdm
 from collections import Counter
 from rdflib import URIRef
 
-VALPROP = 0.4
-REST = '.rest'
-INV  = 'inv.'
 S = os.sep
 
 def locate_file(filepath):
@@ -28,67 +25,48 @@ def st(node):
     else:
         return node.n3()
 
-def add_neighbors(set, graph, node, depth=2):
-    """
-    Source: https://github.com/pbloem/gated-rgcn/blob/1bde7f28af8028f468349b2d760c17d5c908b58b/kgmodels/data.py#L29
-
-    :param set:
-    :param graph:
-    :param node:
-    :param depth:
-    :return:
-    """
-
-    if depth == 0:
-        return
-
-    for s, p, o in graph.triples((node, None, None)):
-        set.add((s, p, o))
-        add_neighbors(set, graph, o, depth=depth-1)
-
-    for s, p, o in graph.triples((None, None, node)):
-        set.add((s, p, o))
-        add_neighbors(set, graph, s, depth=depth-1)
+def load_strings(file):
+    """ Read triples file """
+    with open(file, 'r') as f:
+        return [line.split() for line in f]
 
 
 # TODO: May be rewrite this without RDFlib dependency - Low priority
-def load_node_classification_data(name, final=True, bidir=True, self_loops=True, limit=None, prune=False):
+def load_node_classification_data(name, use_test_set=False, limit=None, disable_cache=True, val_prop=0.4):
     """
     Load knowledge graphs for node classification experiment.
-    Self connections are automatically added as a special relation.
 
     Source: https://github.com/pbloem/gated-rgcn/blob/1bde7f28af8028f468349b2d760c17d5c908b58b/kgmodels/data.py#L42
 
     :param name: Dataset name ('aifb', 'am', 'bgs' or 'mutag')
-    :param final: If true, load the canonical test set, otherwise split a validation set off from the training data.
+    :param use_test_set: If true, load the canonical test set, otherwise split a validation set off from the training data.
     :param limit: If set, the number of unique relations will be limited to this value, plus one for the self-connections,
                   plus one for the remaining connections combined into a single, new relation.
-    :param self_loops: If true, adds self-loops explicitly.
-    :param bidir: If true, includes inverse links for each relation
-    :param prune: Whether to prune edges that are further than two steps from the target labels
-    :return: A tuple containing the graph data, and the classification test and train sets:
+    :param disable_cache: If true, does not load from cache.
+    :param val_prop: Size of the validation split from the training data (Default: 0.4).
+    :return: A tuple containing the graph data, and the node classification test and train sets:
               - edges: dictionary of edges (relation -> pair of lists cont. subject and object indices respectively)
     """
-    # -- Check if the data has been cached for quick loading.
-    cachefile = locate_file(f'data{S}{name}{S}cache_{"fin" if final else "val"}_{"pruned" if prune else "unpruned"}.pkl')
-    if os.path.isfile(cachefile) and limit is None:
-        print('Using cached data.')
+    REST = '.rest'
+    INV = 'inv.'
+
+    # Check if the data has been cached for quick loading.
+    cachefile = locate_file(f'data{S}{name}{S}cache_{"test" if use_test_set else "validation"}.pkl')
+    if not disable_cache and os.path.isfile(cachefile) and limit is None:
+        print('Using cached data...')
         with open(cachefile, 'rb') as file:
             data = pickle.load(file)
             print('Loaded.')
             return data
-
-    print('No cache found (or relation limit is set). Loading data from scratch.')
+    print('Loading data from scratch...')
 
     if name.lower() == 'aifb':
-        # AIFB data (academics, affiliations, publications, etc. About 8k nodes)
         file = locate_file('data/aifb/aifb_stripped.nt.gz')
         train_file = locate_file('data/aifb/trainingSet.tsv')
         test_file = locate_file('data/aifb/testSet.tsv')
         label_header = 'label_affiliation'
         nodes_header = 'person'
     elif name.lower() == 'am':
-        # Collection of the Amsterdam Museum. Data is downloaded on first load.
         file = locate_file('data/am/am_stripped.nt.gz')
         train_file = locate_file('data/am/trainingSet.tsv')
         test_file = locate_file('data/am/testSet.tsv')
@@ -109,13 +87,13 @@ def load_node_classification_data(name, final=True, bidir=True, self_loops=True,
     else:
         raise ValueError(f'Could not find \'{name}\' dataset')
 
-    # -- Load the classification task
     labels_train = pd.read_csv(train_file, sep='\t', encoding='utf8')
-    if final:
+    if use_test_set:
         labels_test = pd.read_csv(test_file, sep='\t', encoding='utf8')
-    else:  # split the training data into train and validation
+    else:
+        # Split the training data into train and validation
         ltr = labels_train
-        pivot = int(len(ltr) * VALPROP)
+        pivot = int(len(ltr) * val_prop)
 
         labels_test = ltr[:pivot]
         labels_train = ltr[pivot:]
@@ -132,7 +110,7 @@ def load_node_classification_data(name, final=True, bidir=True, self_loops=True,
 
     print('Labels loaded.')
 
-    # -- Parse the data with RDFLib
+    # Parse the data with RDFLib
     graph = rdf.Graph()
 
     if file.endswith('nt.gz'):
@@ -143,14 +121,8 @@ def load_node_classification_data(name, final=True, bidir=True, self_loops=True,
 
     print('RDF loaded.')
 
-    # -- Collect all node and relation labels
-    if prune:
-        triples = set()
-        for node in list(train.keys()) + list(test.keys()):
-            add_neighbors(triples, graph, URIRef(node), depth=2)
-
-    else:
-        triples = graph
+    # Collect all node and relation labels
+    triples = graph
 
     nodes = set()
     relations = Counter()
@@ -160,9 +132,6 @@ def load_node_classification_data(name, final=True, bidir=True, self_loops=True,
         nodes.add(st(o))
 
         relations[st(p)] += 1
-
-        if bidir:
-            relations[INV + str(p)] += 1
 
     i2n = list(nodes) # maps indices to labels
     n2i = {n:i for i, n in enumerate(i2n)} # maps labels to indices
@@ -176,63 +145,46 @@ def load_node_classification_data(name, final=True, bidir=True, self_loops=True,
 
     r2i = {r: i for i, r in enumerate(i2r)}
 
-    edges = {}
+    # TODO: Discard the code below
+    # # Collect all edges into a dictionary: relation -> (from, to) (only storing integer indices)
+    # edges = {}
+    # for s, p, o in tqdm.tqdm(triples):
+    #     s, p, o = n2i[st(s)], st(p), n2i[st(o)]
+    #
+    #     pf = r2i[p] if (p in r2i) else r2i[REST]
+    #
+    #     if pf not in edges:
+    #         edges[pf] = [], []
+    #
+    #     edges[pf][0].append(s)
+    #     edges[pf][1].append(o)
 
-    # -- Collect all edges into a dictionary: relation -> (from, to)
-    #    (only storing integer indices)
+    # Collect all edges into a list: [from, relation, to] (only storing integer indices)
+    edges = list()
     for s, p, o in tqdm.tqdm(triples):
         s, p, o = n2i[st(s)], st(p), n2i[st(o)]
-
         pf = r2i[p] if (p in r2i) else r2i[REST]
-
-        if pf not in edges:
-            edges[pf] = [], []
-
-        edges[pf][0].append(s)
-        edges[pf][1].append(o)
-
-        if bidir:
-            pi = r2i[INV+p] if (INV+p in r2i) else r2i[INV+REST]
-
-            if pi not in edges:
-                edges[pi] = [], []
-
-            edges[pi][0].append(o)
-            edges[pi][1].append(s)
-
-    # Add self connections explicitly
-    if self_loops:
-        edges[len(i2r)] = list(range(len(i2n))), list(range(len(i2n)))
+        edges.append([s, pf, o])
 
     print('Graph loaded.')
 
-    # -- Cache the results for fast loading next time
+    # Cache the results for fast loading next time
     if limit is None:
         with open(cachefile, 'wb') as file:
             pickle.dump([edges, (n2i, i2n), (r2i, i2r), train, test], file)
 
     return edges, (n2i, i2n), (r2i, i2r), train, test
 
-def load_strings(file):
-    """ Read triples file """
-    with open(file, 'r') as f:
-        return [line.split() for line in f]
-
-def load_link_prediction_data(name, final=True, bidir=True, self_loops=True, limit=None, prune=False):
+def load_link_prediction_data(name, use_test_set=False, limit=None):
     """
     Load knowledge graphs for link prediction experiment.
-    Self connections are NOT automatically added as a special relation.
 
     Source: https://github.com/pbloem/gated-rgcn/blob/1bde7f28af8028f468349b2d760c17d5c908b58b/kgmodels/data.py#L218
 
     :param name: Dataset name ('aifb', 'am', 'bgs' or 'mutag')
-    :param final: If true, load the canonical test set, otherwise split a validation set off from the training data.
-    :param limit: If set, the number of unique relations will be limited to this value, plus one for the self-connections,
-                  plus one for the remaining connections combined into a single, new relation.
-    :param self_loops: If true, adds self-loops explicitly.
-    :param bidir: If true, includes inverse links for each relation
-    :param prune: Whether to prune edges that are further than two steps from the target labels
-    :return: A tuple containing the graph data, and the classification test and train sets:
+    :param use_test_set: If true, load the canonical test set, otherwise load validation set from file.
+    :param limit: If set, only the first n triples are used.
+    :return: A tuple containing the graph data, and the link prediction test and train sets:
               - edges: dictionary of edges (relation -> pair of lists cont. subject and object indices respectively)
     """
 
@@ -259,7 +211,7 @@ def load_link_prediction_data(name, final=True, bidir=True, self_loops=True, lim
     val = load_strings(val_file)
     test = load_strings(test_file)
 
-    if not final:
+    if not use_test_set:
         test = val
     else:
         train = train + val
@@ -268,7 +220,7 @@ def load_link_prediction_data(name, final=True, bidir=True, self_loops=True, lim
         train = train[:limit]
         test = test[:limit]
 
-    # mappings for nodes (n) and relations (r)
+    # Mappings for nodes (n) and relations (r)
     nodes, rels = set(), set()
     for triple in train + val + test:
         nodes.add(triple[0])
@@ -278,10 +230,25 @@ def load_link_prediction_data(name, final=True, bidir=True, self_loops=True, lim
     i2n, i2r = list(nodes), list(rels)
     n2i, r2i = {n: i for i, n in enumerate(nodes)}, {r: i for i, r in enumerate(rels)}
 
-    traini, testi = [], []
-    for st in train:
-        traini.append([n2i[st[0]], r2i[st[1]], n2i[st[2]]])
-    for st in test:
-        testi.append([n2i[st[0]], r2i[st[1]], n2i[st[2]]])
+    # TODO: Discard the code below
+    # # Collect train and test triples into two dictionaries: relation -> (from, to) (only storing integer indices)
+    # train_triples = {i: ([], []) for i in r2i.values()}
+    # test_triples = {i: ([], []) for i in r2i.values()}
+    #
+    # for s, p, o in train:
+    #     s, p, o = n2i[s], r2i[p], n2i[o]
+    #     train_triples[p][0].append(s)
+    #     train_triples[p][1].append(o)
+    #
+    # for s, p, o in test:
+    #     s, p, o = n2i[s], r2i[p], n2i[o]
+    #     test_triples[p][0].append(s)
+    #     test_triples[p][1].append(o)
+    #
+    # assert train_triples.keys() == test_triples.keys(), \
+    #     "The order of relations in the test and train set must be the same!"
 
-    return train, test, (n2i, i2n), (r2i, i2r)
+    train = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in train]
+    test = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in test]
+
+    return (n2i, i2n), (r2i, i2r), train, test
