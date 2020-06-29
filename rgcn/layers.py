@@ -6,30 +6,6 @@ from rgcn.utils import block_diag, stack_matrices, sum_sparse, drop_edges
 import math
 
 
-class EmbeddingLayer(nn.Module):
-    def __init__(self,
-                 in_feat,
-                 out_feat,
-                 bias=True):
-        super(EmbeddingLayer, self).__init__()
-        self.embedding = torch.nn.Embedding(in_feat, out_feat)
-
-        # Instantiate biases
-        if bias:
-            self.bias = Parameter(torch.FloatTensor(in_feat))
-        else:
-            self.register_parameter('bias', None)
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        stdv = 1.0 / math.sqrt(self.weights.size(1))
-        self.bias.uniform_(-stdv, stdv)
-
-    def forward(self, g):
-        return self.embedding(g)
-
-
 class RelationalGraphConvolution(Module):
     """ Relational Graph Convolution (RGC) Layer (as described in https://arxiv.org/abs/1703.06103)"""
     def __init__(self,
@@ -43,7 +19,8 @@ class RelationalGraphConvolution(Module):
                  bias=True,
                  decomposition=None,
                  vertical_stacking=False,
-                 reset_mode='xavier'):
+                 reset_mode='xavier',
+                 device='cpu'):
         super(RelationalGraphConvolution, self).__init__()
 
         assert (triples is not None or num_nodes is not None or num_relations is not None or out_features is not None), \
@@ -69,6 +46,7 @@ class RelationalGraphConvolution(Module):
         self.vertical_stacking = vertical_stacking
         self.edge_dropout = edge_dropout
         self.edge_dropout_self_loop = edge_dropout_self_loop
+        self.device = device
 
         # Instantiate weights
         if self.weight_decomp is None:
@@ -146,13 +124,13 @@ class RelationalGraphConvolution(Module):
         # Apply edge dropout
         if edge_dropout is not None and self.training:
 
-            assert 'general' in edge_dropout, 'General edge dropout must be specified!'
+            assert 'general' in edge_dropout and 'self_loop' in edge_dropout, \
+                'General and self-loop edge dropouts must be specified!'
             assert type(edge_dropout['general']) is float and 0.0 <= edge_dropout['general'] <= 1.0, \
-                "Edge dropout rate must between 0.0 and 1.0 (inclusive)."
+                "Edge dropout rates must between 0.0 and 1.0!"
 
-            # TODO: Check with Peter. This applies general dropout if one for self loop is not given. Should I be more transparent about this?
             general_edo = edge_dropout['general']
-            self_loop_edo = edge_dropout['self_loop'] if 'self_loop' in edge_dropout else edge_dropout
+            self_loop_edo = edge_dropout['self_loop']
 
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
@@ -164,10 +142,10 @@ class RelationalGraphConvolution(Module):
             vertical_stacking=vertical_stacking
         )
         num_triples = adj_indices.size(0)
-        vals = torch.ones(num_triples, dtype=torch.float)
+        vals = torch.ones(num_triples, dtype=torch.float, device=self.device)
 
         # Apply row-wise normalisation
-        vals = vals / sum_sparse(adj_indices, vals, adj_size)
+        vals = vals / sum_sparse(adj_indices, vals, adj_size, device=self.device)
 
         # Construct adjacency matrix
         adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
@@ -198,9 +176,6 @@ class RelationalGraphConvolution(Module):
             features = features[None, :, :].expand(self.num_relations, self.num_nodes, in_dim)
             fw = torch.einsum('rni, rio -> rno', features, weights).contiguous()
             output = torch.mm(adj, fw.view(self.num_relations * self.num_nodes, out_dim))
-
-        # Note: An explicit sum operation is not required since it is free using matrix multiplication
-        # Combine representations of different relations using permutation-invariant SUM operation
 
         assert output.size() == (self.num_nodes, out_dim)
         

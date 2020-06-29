@@ -1,0 +1,21 @@
+dataset: MUTAG
+
+training:
+  epochs: 50
+  optimiser:
+    algorithm: adam
+    weight_decay: 0.0
+    learn_rate: 0.01
+  use_cuda: False  # If true, model is trained on GPU
+
+rgcn:
+  model: rgcn
+  layer1_l2_penalty: 0.0005  # l2 penalty on first layer weights
+  num_layers: 2  # Number of layers in RGCN
+  hidden_size: 16
+  decomposition:
+    type: basis
+    num_bases: 50  # MUTAG contains 23 relations
+
+evaluation:
+  test_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.

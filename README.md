@@ -1,11 +1,11 @@
 # Torch RGCN 
 
-This is a PyTorch implementation of the Relational Graph Convolutional Network (RGCN), a graph embedding network 
-proposed by by Schlichtkrull **et al.** 
+This is a PyTorch implementation of the Relational Graph Convolutional Network (RGCN), an embedding framework for
+ relational graphs proposed by by Schlichtkrull **et al.** 
 [Modeling Relational Data with Graph Convolutional Networks](https://arxiv.org/abs/1703.06103).
  
-In our recent workshop paper, we reproduce the link prediction and node classification experiments from the original 
-paper and furthermore, present four RGCN extensions that address the shortcomings of typical GCNs.
+In our workshop paper, we reproduce the relation prediction  and node classification experiments from the original 
+paper and furthermore, present three RGCN extensions that address the shortcomings of typical GCNs.
  
 Our workshop paper: 
 [Reproducing the Relational Graph Convolutional Network: Lessons We Learned!](https://www.overleaf.com/read/hnvnwhhhtxrt) 
@@ -30,29 +30,22 @@ Now, you may install the RGCN module with:
 
 ### Configuration files
 
-The hyper-parameters for the different experiments can be found in the configurations files under 
-[configs](configs). The naming convention of the files is as follows: 
-
-`{MODEL}-{EXPERIMENT}-{DATASET}.yaml`
+The hyper-parameters for the different experiments can be found in [YAML](https://yaml.org/) files under 
+[configs](configs). The naming convention of the files is as follows: `{MODEL}/{EXPERIMENT}-{DATASET}.yaml`
 
 ### Models
-* `standard`
-* `compression`
-* `embedding`
-* `global`
-* `overparam`
+* `rgcn` - Standard RGCN Model 
+* `c-rgcn` - Compression RGCN Model 
+* `e-rgcn` - Embedding RGCN Model
+* `g-rgcn` - Global Readout RGCN Model
 
 ### Experiments
-* `lp` (link prediction)
-* `nc` (node classification) 
-
-[ #TODO: Come up with better names for these models! ]
-
-[#TODO: Update configuration files after hyper-parameter tuning]
+* `rp` - Relation Prediction
+* `nc` - Node Classification 
 
 ### Datasets
 
-#### Link Prediction
+#### Relation Prediction 
 
  * `AIFB` from 
  **Stephan Bloehdorn and York Sure. 
@@ -95,13 +88,13 @@ In The Semantic Web: Research and Applications. 2012.**
 
 ## Part 1: Experiment Reproduction  
 
-### Link Prediction
+### Relation Prediction 
 
-Original Link Prediction Implementation: https://github.com/MichSchli/RelationPrediction 
+Original Relation Prediction  Implementation: https://github.com/MichSchli/RelationPrediction 
 
-Run link prediction using the standard RGCN model using:
+Run relation Prediction  using the standard RGCN model using:
 
-`python experiments/predict_links.py with configs/standard-lp-{DATASET}.yaml`
+`python experiments/predict_links.py with configs/rgcn/rp-{DATASET}.yaml`
 
 Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237`, `WN18` or `WN18RR`.
 
@@ -111,7 +104,7 @@ Original Node Classification Implementation: https://github.com/tkipf/relational
 
 Run node classification using the standard RGCN model using:
 
-`python experiments/classify_nodes.py with configs/standard-nc-{DATASET}.yaml`
+`python experiments/classify_nodes.py with configs/rgcn/nc-{DATASET}.yaml`
 
 Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
@@ -119,61 +112,41 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`
 
 ### RGCN with Node Embeddings 
 
-Typically, the RGCN takes in a feature matrix consisting of one-hot encoded vectors which indicate the presence or 
-absence of a particular node feature. Replacing the one-hot encoded vectors with rich node embeddings would (in theory) 
-help to produce better latent graph representations. 
+To run the node classification experiment use: 
 
-To run the experiment use: 
+`python experiments/classify_nodes.py with configs/e-rgcn/rp-{DATASET}.yaml`
 
-`python experiments/predict_links.py with configs/embedding-lp-{DATASET}.yaml`
-
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237`, `WN18` or `WN18RR`.
+Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
 ### RGCN with Compressed inputs 
 
-It is common knowledge that GNNs do not scale well to large graphs because they require large memory allocation. This 
-problem is more significant for RGCNs due to the high-dimensional tensors required to represent the diverse types of 
-edges and nodes. In this model, we compress the input graph prior to feeding it into an RGCN and expand the resulting 
-embedding back to a high-dimensional vectors. This model would be similar a bottleneck architecture.  
+To run the relation prediction experiment use: 
 
-[ #TODO: For this experiment, we can also make use of Wikidata-5M dataset]
-
-To run the experiment use: 
-
-`python experiments/predict_links.py with configs/compression-lp-{DATASET}.yaml`
+`python experiments/predict_links.py with configs/c-rgcn/rp-{DATASET}.yaml`
 
 Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237`, `WN18` or `WN18RR`.
 
 ### RGCN with Global Readouts
 
-A common drawback of GCNs, including RGCNs, is that they only consider local structure during message propagation. 
-With global feature computation, such as [global attribute](https://openreview.net/pdf?id=r1lZ7AEKvB#cite.all2018graphs) 
-and [global readout](https://openreview.net/pdf?id=r1lZ7AEKvB), the RGCN should be able to incorporate global 
-information about the graph into ever layer of the GNN.
+To run the node classification experiment use:
 
-To run the experiment use: 
+`python experiments/classify_nodes.py with configs/g-rgcn/rp-{DATASET}.yaml`
 
-`python experiments/predict_links.py with configs/global-lp-{DATASET}.yaml`
+Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237`, `WN18` or `WN18RR`.
+### Overparameterization 
 
-### Overparameterising the RGCN
+To run the node classification experiment use:
 
-This experiment will test the [deep double descent phenomena](https://arxiv.org/abs/1912.02292) that is typically 
-observed in large CNNs. This can be simply done using the stanard model by increasing the number of blocks (in block diagonal
-decomposition) or number of bases (in basis decomposition) to a value greater than the number of relations.
+`python experiments/classify_nodes.py with configs/o-rgcn/rp-{DATASET}.yaml`
 
-To run the experiment use: 
-
-`python experiments/predict_links.py with configs/overparam-lp-{DATASET}.yaml`
-
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237`, `WN18` or `WN18RR`.
+Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
 ## Model Performance
 
 ### Part 1: Reproduction Experiments
 
-#### Link Prediction using standard RGCN
+#### Relation Prediction  using standard RGCN
 
 | Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
 | ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
@@ -193,18 +166,16 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k
 
 ### Part 2: New Configurations
 
-Here are the link prediction results for the different models.
+#### Node Classification using e-RGCN
 
-#### Embedding 
+| Dataset                       | Accuracy                         |
+| ----------------------------- |:--------------------------------:|
+| AIFB                          | -                                |
+| AM                            | -                                |
+| BGS                           | -                                |
+| MUTAG                         | -                                |
 
-| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
-| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
-| FB15k                         | -                                | -                      | -                       | -                       |
-| FB15k-237                     | -                                | -                      | -                       | -                       |
-| WN18                          | -                                | -                      | -                       | -                       |
-| WN18RR                        | -                                | -                      | -                       | -                       |
-
-#### Compression (Bottleneck Architecture) 
+#### Relation Prediction using c-RGCN
 
 | Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
 | ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
@@ -214,14 +185,23 @@ Here are the link prediction results for the different models.
 | WN18RR                        | -                                | -                      | -                       | -                       |
 | Wikidata 5M                   | -                                | -                      | -                       | -                       |
 
-#### Global Readout 
+#### Node Classification using g-RGCN
 
-| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
-| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
-| FB15k                         | -                                | -                      | -                       | -                       |
-| FB15k-237                     | -                                | -                      | -                       | -                       |
-| WN18                          | -                                | -                      | -                       | -                       |
-| WN18RR                        | -                                | -                      | -                       | -                       |
+| Dataset                       | Accuracy                         |
+| ----------------------------- |:--------------------------------:|
+| AIFB                          | -                                |
+| AM                            | -                                |
+| BGS                           | -                                |
+| MUTAG                         | -                                |
+
+#### Node Classification using o-RGCN
+
+| Dataset                       | Accuracy                         |
+| ----------------------------- |:--------------------------------:|
+| AIFB                          | -                                |
+| AM                            | -                                |
+| BGS                           | -                                |
+| MUTAG                         | -                                |
 
 ## Unit Tests 
 

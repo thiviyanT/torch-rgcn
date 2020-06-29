@@ -1,37 +1,51 @@
-from rgcn.layers import RelationalGraphConvolution, EmbeddingLayer
+from rgcn.layers import RelationalGraphConvolution
 from rgcn.utils import add_inverse_and_self
 import torch.nn.functional as F
 from torch import nn
 import torch
+import copy
+import math
 
 
 ######################################################################################
 # Models for Experiment Reproduction
 ######################################################################################
 
-class LinkPredictor(nn.Module):
-    """ Link prediction via R-GCN encoder and DistMult decoder """
+
+class RelationPredictor(nn.Module):
+    """ Relation Prediction via RGCN encoder and DistMult decoder """
     def __init__(self,
                  triples=None,
                  nnodes=None,
                  nrel=None,
                  nfeat=None,
-                 nhid=16,
-                 nemb=128,
-                 out=None,
                  dropout=.0,
-                 edge_dropout=None,
-                 decomposition=None,
+                 encoder_config=None,
+                 decoder_config=None,
                  device='cpu'):
-        super(LinkPredictor, self).__init__()
+        super(RelationPredictor, self).__init__()
+
+        nhid = encoder_config["hidden_size"] if "hidden_size" in encoder_config else None
+        nemb = encoder_config["embedding_size"] if "embedding_size" in encoder_config else None
+        rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
+        edge_dropout = encoder_config["edge_dropout"] if "edge_dropout" in encoder_config else None
+        decomposition = encoder_config["decomposition"] if "decomposition" in encoder_config else None
+
+        assert (triples is not None or nnodes is not None or nrel is not None or nemb is not None), \
+            "The following must be specified: triples, number of nodes, number of relations and output dimension!"
+        assert 0 < rgcn_layers < 3, "Only supports the following number of RGCN layers: 1 and 2."
 
         self.num_nodes = nnodes
         self.num_rels = nrel
         self.device = device
         self.dropout = dropout
+        self.rgcn_layers = rgcn_layers
 
-        assert (triples is not None or nnodes is not None or nrel is not None or out is not None), \
-            "The following must be specified: triples, number of nodes, number of relations and output dimension!"
+        if rgcn_layers == 1:
+            nhid = nemb
+
+        if rgcn_layers == 2:
+            assert nhid is not None, "Requested two layers but hidden_size not specified!"
 
         triples = torch.tensor(triples, dtype=torch.long, device=device)
         with torch.no_grad():
@@ -46,40 +60,51 @@ class LinkPredictor(nn.Module):
             in_features=nfeat,
             out_features=nhid,
             edge_dropout=edge_dropout,
-            decomposition=decomposition
+            decomposition=decomposition,
+            device=device
         )
-        self.rgc2 = RelationalGraphConvolution(
-            triples=self.triples_plus,
-            num_nodes=nnodes,
-            num_relations=nrel * 2 + 1,
-            in_features=nhid,
-            out_features=out,
-            edge_dropout=edge_dropout,
-            decomposition=decomposition
-        )
+        if rgcn_layers == 2:
+            self.rgc2 = RelationalGraphConvolution(
+                triples=self.triples_plus,
+                num_nodes=nnodes,
+                num_relations=nrel * 2 + 1,
+                in_features=nhid,
+                out_features=nemb,
+                edge_dropout=edge_dropout,
+                decomposition=decomposition,
+                device=device
+            )
 
-        self.entities = EmbeddingLayer(nnodes, nemb)
-        self.relations = EmbeddingLayer(nrel, nemb)
+        # Decoder
+        self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
-    def score(self, triples):
+        # Initialise Parameters
+        stdv = 1.0 / math.sqrt(self.relations.size(1))
+        self.relations.data.uniform_(-stdv, stdv)
+
+    def distmult_score(self, triples, nodes, relations):
         """ Simple DistMult scoring function (from https://arxiv.org/pdf/1412.6575.pdf) """
 
         s = triples[:, 0]
         p = triples[:, 1]
         o = triples[:, 2]
-        s, p, o = self.entities[s, :], self.relations[p, :], self.entities[o, :]
+        s, p, o = nodes[s, :], relations[p, :], nodes[o, :]
 
-        return (s * p * o).sum(dim=1)
+        scores = (s * p * o).sum(dim=1)
 
-    def forward(self):
-        """ Embed relational graph and then compute DistMult score """
+        return scores.view(-1)
+
+    def forward(self, triples):
+        """ Embed relational graph and then compute score """
 
         x = self.rgc1()
-        x = F.relu(x)
-        x = self.rgc2(features=x)
-        scores = self.decoder(x)
 
-        return scores.view()
+        if self.rgcn_layers == 2:
+            x = F.relu(x)
+            x = self.rgc2(features=x)
+
+        scores = self.distmult_score(triples, x, self.relations)
+        return scores
 
 
 class NodeClassifier(nn.Module):
@@ -90,20 +115,24 @@ class NodeClassifier(nn.Module):
                  nrel=None,
                  nfeat=None,
                  nhid=16,
+                 nlayers=2,
                  nclass=None,
                  edge_dropout=None,
                  decomposition=None,
                  device='cpu'):
         super(NodeClassifier, self).__init__()
 
-        self.num_nodes = nnodes
-        self.nrel = nrel
-        self.nfeat = nfeat
-        self.device = device
-        self.edge_dropout = edge_dropout
+        self.nlayers = nlayers
 
         assert (triples is not None or nnodes is not None or nrel is not None or nclass is not None), \
             "The following must be specified: triples, number of nodes, number of relations and number of classes!"
+        assert 0 < nlayers < 3, "Only supports the following number of RGCN layers: 1 and 2."
+
+        if nlayers == 1:
+            nhid = nclass
+
+        if nlayers == 2:
+            assert nhid is not None, "Requested two layers but nhid not specified!"
 
         triples = torch.tensor(triples, dtype=torch.long, device=device)
         with torch.no_grad():
@@ -118,23 +147,29 @@ class NodeClassifier(nn.Module):
             in_features=nfeat,
             out_features=nhid,
             edge_dropout=edge_dropout,
-            decomposition=decomposition
+            decomposition=decomposition,
+            device=device
         )
-        self.rgc2 = RelationalGraphConvolution(
-            triples=self.triples_plus,
-            num_nodes=nnodes,
-            num_relations=nrel * 2 + 1,
-            in_features=nhid,
-            out_features=nclass,
-            edge_dropout=edge_dropout,
-            decomposition=decomposition
-        )
+        if nlayers == 2:
+            self.rgc2 = RelationalGraphConvolution(
+                triples=self.triples_plus,
+                num_nodes=nnodes,
+                num_relations=nrel * 2 + 1,
+                in_features=nhid,
+                out_features=nclass,
+                edge_dropout=edge_dropout,
+                decomposition=decomposition,
+                device=device
+            )
 
     def forward(self):
         """ Embed relational graph and then compute class probabilities """
         x = self.rgc1()
-        x = F.relu(x)
-        x = self.rgc2(features=x)
+
+        if self.nlayers == 2:
+            x = F.relu(x)
+            x = self.rgc2(features=x)
+
         x = F.log_softmax(x, dim=1)
         return x
 
@@ -144,63 +179,122 @@ class NodeClassifier(nn.Module):
 ######################################################################################
 
 
-class CompressionLinkPredictor(LinkPredictor):
-    """ A standard link prediction model where the input to the RGCN is compressed using MLP """
+class CompressionRelationPredictor(RelationPredictor):
+    """ Relation prediction model with a bottleneck architecture within the encoder """
+    def __init__(self,
+                 triples=None,
+                 nnodes=None,
+                 nrel=None,
+                 nfeat=None,
+                 dropout=.0,
+                 encoder_config=None,
+                 decoder_config=None,
+                 device='cpu'):
+
+        # Hack: Sacred config object is immutable, so we its data!
+        encoder_config = copy.deepcopy(encoder_config)
+
+        # Declare variables for bottleneck architecture
+        embedding_size = encoder_config["embedding_size"]
+        compression_size = encoder_config["hidden_size"]
+        # Manipulate RGCN input
+        nfeat = encoder_config["hidden_size"]  # Configure RGCN to accept compressed node embedding as feature matrix
+        encoder_config["embedding_size"] = encoder_config["hidden_size"]  # Set RGCN output dimension
+
+        super(CompressionRelationPredictor, self)\
+            .__init__(triples, nnodes, nrel, nfeat, dropout, encoder_config, decoder_config, device)
+
+        # Encoder
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, embedding_size))
+        self.encoding_layer = torch.nn.Linear(embedding_size, compression_size)
+        self.decoding_layer = torch.nn.Linear(compression_size, embedding_size)
+        # Decoder
+        self.relations = nn.Parameter(torch.FloatTensor(nrel, embedding_size))
+
+        # Initialise Parameters
+        stdv = 1.0 / math.sqrt(self.relations.size(1))
+        self.node_embeddings.data.uniform_(-stdv, stdv)
+        self.relations.data.uniform_(-stdv, stdv)
+
+    def forward(self, triples):
+        """ Embed relational graph and then compute class probabilities """
+
+        nodes = self.encoding_layer(self.node_embeddings)
+
+        x = self.rgc1(features=nodes)
+
+        if self.rgcn_layers == 2:
+            x = F.relu(x)
+            x = self.rgc2(features=x)
+
+        x = self.node_embeddings + self.decoding_layer(x)
+
+        scores = self.distmult_score(triples, x, self.relations)
+        return scores
+
+
+class EmbeddingNodeClassifier(NodeClassifier):
+    """ Node classification model with node embeddings as the feature matrix """
     def __init__(self,
                  triples=None,
                  nnodes=None,
                  nrel=None,
                  nfeat=None,
                  nhid=16,
-                 out=None,
-                 dropout=.0,
+                 nlayers=2,
+                 nclass=None,
                  edge_dropout=None,
                  decomposition=None,
                  device='cpu'):
-        # super(CompressionLinkPredictor, self).__init__()
-        raise NotImplementedError('This model has not been implemented yet!')
+        nfeat = nhid  # Configure RGCN to accept node embedding as feature matrix
+
+        super(EmbeddingNodeClassifier, self)\
+            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition, device)
+
+        # Node embeddings
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nhid))
+
+        # Initialise Parameters
+        stdv = 1.0 / math.sqrt(self.node_embeddings.size(1))
+        self.node_embeddings.data.uniform_(-stdv, stdv)
 
     def forward(self):
-        pass
+        """ Embed relational graph and then compute class probabilities """
+        x = self.rgc1(self.node_embeddings)
+
+        if self.nlayers == 2:
+            x = F.relu(x)
+            x = self.rgc2(features=x)
+
+        x = F.log_softmax(x, dim=1)
+        return x
 
 
-class EmbeddingLinkPredictor(LinkPredictor):
-    """ A standard link prediction model with node embeddings as the feature matrix """
-
+class GlobalNodeClassifier(NodeClassifier):
+    """ Node classification model with global readouts """
     def __init__(self,
                  triples=None,
                  nnodes=None,
                  nrel=None,
                  nfeat=None,
                  nhid=16,
-                 out=None,
-                 dropout=.0,
+                 nlayers=2,
+                 nclass=None,
                  edge_dropout=None,
                  decomposition=None,
                  device='cpu'):
-        # super(EmbeddingLinkPredictor, self).__init__()
-        raise NotImplementedError('This model has not been implemented yet!')
+        super(GlobalNodeClassifier, self)\
+            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition, device)
 
     def forward(self):
-        pass
+        """ Embed relational graph and then compute class probabilities """
+        x = self.rgc1()
 
+        x = x + x.mean(dim=0, keepdim=True)
 
-class GlobalLinkPredictor(LinkPredictor):
-    """ A standard link prediction model with global readouts """
+        if self.nlayers == 2:
+            x = F.relu(x)
+            x = self.rgc2(features=x)
 
-    def __init__(self,
-                 triples=None,
-                 nnodes=None,
-                 nrel=None,
-                 nfeat=None,
-                 nhid=16,
-                 out=None,
-                 dropout=.0,
-                 edge_dropout=None,
-                 decomposition=None,
-                 device='cpu'):
-        # super(GlobalLinkPredictor, self).__init__()
-        raise NotImplementedError('This model has not been implemented yet!')
-
-    def forward(self):
-        pass
+        x = F.log_softmax(x, dim=1)
+        return x

@@ -22,7 +22,7 @@ def create_experiment(name='exp', database=None):
     return ex
 
 #######################################################################################################################
-# Link Prediction Utils
+# Relation Prediction Utils
 #######################################################################################################################
 
 def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
@@ -37,61 +37,38 @@ def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
     return negative_triples.tolist()
 
 
-def perturb(test_triple, entity_dictionary, device='cpu'):
-    """
-    Generate candidates by replacing the tail with every entity for each test triplet
-    """
-    entites = list(entity_dictionary.keys())
-    num_entities = len(entites)
-    s, p, _ = test_triple
+def generate_candidates(s, p, entity_dictionary):
+    """ Generate a list of candidate triples by replacing the tail with every entity for each test triplet """
+    return [(s, p, o) for o in range(len(entity_dictionary))]
 
-    s = torch.tensor([s], dtype=torch.long, device=device).repeat(num_entities, 1)
-    p = torch.tensor([p], dtype=torch.long, device=device).repeat(num_entities, 1)
-    o = torch.tensor(entites).view(num_entities, -1)
+def filter_triples(candidate_triples, all_triples, correct_triple, device='cpu'):
+    """ Filter out candidate_triples that are present in all_triples, but keep correct_triple """
+    return [triple for triple in candidate_triples if not triple in all_triples or triple == correct_triple]
 
-    candidates = torch.cat([s, p, o], dim=1)
-    return candidates
+def compute_mrr(rank):
+    """ Compute Mean Reciprocal Rank for a given list of ranked triples """
+    return 1.0/rank
 
-def rank(results):
-    """ Ranks the results according to the scores according to the probabilities"""
-    sorted_results = results
+def compute_hits(rank, k):
+    """ Compute Precision at K for a given list of ranked triples """
+    if k == 1:
+        return 1 if rank == k else 0
+    else:
+        return 1 if rank <= k else 0
 
-    # Sort list according in descending order of probabilities
+def rank_triple(scores, candidate_triples, correct_triple):
+    """ Finds rank of the correct triple after sorting candidates by their scores """
+    sorted_candidates = [list(i[0]) for i in sorted(zip(candidate_triples.tolist(), scores.tolist()), key=lambda i: -i[1])]
+    rank = (sorted_candidates.index(correct_triple) + 1)
+    return rank
 
-    return sorted_results
-
-def filter_triples(candidate_triples, all_triples):
-    """ Filter triples that are present in the train, validation and test split """
-    return [ triple for triple in candidate_triples if not triple in all_triples ]
-
-def compute_mrr(triples, correct_answer):
-    """ Compute Mean Reciprocal Rank value for a particular ranked list """
-    mrr = 0
-    return mrr
-
-def compute_hits(triples, correct_answer, k):
-    """ Compute Hits@k value for a particular ranked list """
-    hits = 0
-    return hits
-
-def compute_scores(scored_candidates, all_triples, correct_answer, filter=True, k=None):
+def compute_metrics(scores, candidates, correct_triple, k=None):
     """ Returns MRR and Hits@k (k=1,3,10) values for a given triple prediction """
     if k is None:
         k = [1, 3, 10]
 
-    ranked_triples = rank(scored_candidates)
-
-    if filter:
-        ranked_triples = filter_triples(ranked_triples, all_triples)
-
-    mrr = compute_mrr(ranked_triples, correct_answer)
-    hits_at_k = dict()
-    for i in k:
-        hits_at_k[k] = compute_hits(ranked_triples, correct_answer, i)
+    rank = rank_triple(scores, candidates, correct_triple)
+    mrr = compute_mrr(rank)
+    hits_at_k = { i:compute_hits(rank, i) for i in k }
 
     return mrr, hits_at_k
-
-#######################################################################################################################
-# Node classification Utils
-#######################################################################################################################
-

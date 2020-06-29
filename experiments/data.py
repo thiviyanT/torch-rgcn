@@ -1,6 +1,6 @@
 import rdflib as rdf
 import pandas as pd
-import gzip, os, wget, pickle, tqdm
+import gzip, os, pickle, tqdm
 from collections import Counter
 from rdflib import URIRef
 
@@ -145,20 +145,6 @@ def load_node_classification_data(name, use_test_set=False, limit=None, disable_
 
     r2i = {r: i for i, r in enumerate(i2r)}
 
-    # TODO: Discard the code below
-    # # Collect all edges into a dictionary: relation -> (from, to) (only storing integer indices)
-    # edges = {}
-    # for s, p, o in tqdm.tqdm(triples):
-    #     s, p, o = n2i[st(s)], st(p), n2i[st(o)]
-    #
-    #     pf = r2i[p] if (p in r2i) else r2i[REST]
-    #
-    #     if pf not in edges:
-    #         edges[pf] = [], []
-    #
-    #     edges[pf][0].append(s)
-    #     edges[pf][1].append(o)
-
     # Collect all edges into a list: [from, relation, to] (only storing integer indices)
     edges = list()
     for s, p, o in tqdm.tqdm(triples):
@@ -169,7 +155,7 @@ def load_node_classification_data(name, use_test_set=False, limit=None, disable_
     print('Graph loaded.')
 
     # Cache the results for fast loading next time
-    if limit is None:
+    if limit is None and not disable_cache:
         with open(cachefile, 'wb') as file:
             pickle.dump([edges, (n2i, i2n), (r2i, i2r), train, test], file)
 
@@ -177,14 +163,14 @@ def load_node_classification_data(name, use_test_set=False, limit=None, disable_
 
 def load_link_prediction_data(name, use_test_set=False, limit=None):
     """
-    Load knowledge graphs for link prediction experiment.
+    Load knowledge graphs for relation Prediction  experiment.
 
     Source: https://github.com/pbloem/gated-rgcn/blob/1bde7f28af8028f468349b2d760c17d5c908b58b/kgmodels/data.py#L218
 
     :param name: Dataset name ('aifb', 'am', 'bgs' or 'mutag')
     :param use_test_set: If true, load the canonical test set, otherwise load validation set from file.
     :param limit: If set, only the first n triples are used.
-    :return: A tuple containing the graph data, and the link prediction test and train sets:
+    :return: A tuple containing the graph data, and the relation Prediction  test and train sets:
               - edges: dictionary of edges (relation -> pair of lists cont. subject and object indices respectively)
     """
 
@@ -229,24 +215,6 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
 
     i2n, i2r = list(nodes), list(rels)
     n2i, r2i = {n: i for i, n in enumerate(nodes)}, {r: i for i, r in enumerate(rels)}
-
-    # TODO: Discard the code below
-    # # Collect train and test triples into two dictionaries: relation -> (from, to) (only storing integer indices)
-    # train_triples = {i: ([], []) for i in r2i.values()}
-    # test_triples = {i: ([], []) for i in r2i.values()}
-    #
-    # for s, p, o in train:
-    #     s, p, o = n2i[s], r2i[p], n2i[o]
-    #     train_triples[p][0].append(s)
-    #     train_triples[p][1].append(o)
-    #
-    # for s, p, o in test:
-    #     s, p, o = n2i[s], r2i[p], n2i[o]
-    #     test_triples[p][0].append(s)
-    #     test_triples[p][1].append(o)
-    #
-    # assert train_triples.keys() == test_triples.keys(), \
-    #     "The order of relations in the test and train set must be the same!"
 
     train = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in train]
     test = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in test]

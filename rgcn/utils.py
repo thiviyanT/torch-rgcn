@@ -16,7 +16,7 @@ def drop_edges(triples, num_nodes, general_edo, self_loop_edo):
 
     return triples[ind, :]
 
-def sum_sparse(indices, values, size, device='cpu', row_normalisation=True):
+def sum_sparse(indices, values, size, row_normalisation=True, device='cpu'):
     """
     Sum the rows or columns of a sparse matrix, and redistribute the
     results back to the non-sparse row/column entries
