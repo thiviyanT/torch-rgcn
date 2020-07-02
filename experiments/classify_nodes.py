@@ -1,6 +1,6 @@
-from misc import create_experiment
-from rgcn.models import NodeClassifier, EmbeddingNodeClassifier, GlobalNodeClassifier
-from data import load_node_classification_data
+from utils.misc import create_experiment
+from torch_rgcn.models import NodeClassifier, EmbeddingNodeClassifier, GlobalNodeClassifier
+from utils.data import load_node_classification_data
 from sklearn.metrics import accuracy_score
 import torch.nn as nn
 import torch
@@ -30,11 +30,12 @@ def train_model(dataset,
     nlayers = rgcn["num_layers"] if "num_layers" in rgcn else 2
     decomposition = rgcn["decomposition"] if "decomposition" in rgcn else None
     layer1_l2_penalty = rgcn["layer1_l2_penalty"] if "layer1_l2_penalty" in rgcn else 0.0
-    test_run = evaluation["test_run"] if "test_run" in evaluation else False
+    final_run = evaluation["final_run"] if "final_run" in evaluation else False
 
     # Load Data
     # Note: Validation dataset will be used as test if this is not a test run
-    triples, (n2i, i2n), (r2i, i2r), train, test = load_node_classification_data(dataset, use_test_set=test_run)
+    triples, (n2i, i2n), (r2i, i2r), train, test = load_node_classification_data(
+        dataset["name"], use_test_set=final_run, prune=dataset["prune"])
 
     # Check for available GPUs
     use_cuda = training["use_cuda"] and torch.cuda.is_available()
