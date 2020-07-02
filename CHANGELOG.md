@@ -30,4 +30,4 @@ Initial public release of Torch-RGCN.
 - Added unit tests under [tests](tests).
 - Added scripts for node classification and relation Prediction  under [experiments](experiments).
 - Added hyper-parameters under [configs](configs).
-- Added RGCN module under [rgcn](rgcn).
+- Added RGCN module under [torch-rgcn](torch-rgcn).
