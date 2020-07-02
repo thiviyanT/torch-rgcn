@@ -1,4 +1,6 @@
-dataset: AIFB
+dataset:
+  name: AIFB
+  prune: False  # If true, prunes edges that are further than two steps from the target labels
 
 training:
   epochs: 50
@@ -15,7 +17,7 @@ rgcn:
   hidden_size: 16  # Number of hidden units in first layer of RGCN
   decomposition:
     type: basis
-    num_bases: 70  # AIFB contains 45 relations
+    num_bases: 100  # AIFB contains 91 unique relations
 
 evaluation:
-  test_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
+  final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.

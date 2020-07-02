@@ -1,4 +1,6 @@
-dataset: BGS
+dataset:
+  name: BGS
+  prune: True  # If true, prunes edges that are further than two steps from the target labels
 
 training:
   epochs: 50
@@ -15,7 +17,7 @@ rgcn:
   hidden_size: 16
   decomposition:
     type: basis
-    num_bases: 140  # BGS contains 103 relations
+    num_bases: 220  # BGS contains 207 unique relations
 
 evaluation:
-  test_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
+  final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.

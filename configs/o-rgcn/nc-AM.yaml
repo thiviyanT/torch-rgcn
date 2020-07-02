@@ -1,4 +1,6 @@
-dataset: AM
+dataset:
+  name: AM
+  prune: True  # If true, prunes edges that are further than two steps from the target labels
 
 training:
   epochs: 50
@@ -15,7 +17,7 @@ rgcn:
   hidden_size: 10
   decomposition:
     type: basis
-    num_bases: 160  # AM contains 133 relations
+    num_bases: 280  # AM contains 267 unique relations
 
 evaluation:
-  test_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
+  final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.

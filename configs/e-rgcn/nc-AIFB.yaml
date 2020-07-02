@@ -1,4 +1,6 @@
-dataset: AIFB
+dataset:
+  name: AIFB
+  prune: False  # If true, prunes edges that are further than two steps from the target labels
 
 training:
   epochs: 50
@@ -6,7 +8,7 @@ training:
     algorithm: adam
     weight_decay: 0.0
     learn_rate: 0.01
-  use_cuda: False  # If true, model is trained on GPU
+  use_cuda: True  # If true, model is trained on GPU
 
 rgcn:
   model: e-rgcn
@@ -15,4 +17,4 @@ rgcn:
   hidden_size: 16  # Number of hidden units in first layer of RGCN
 
 evaluation:
-  test_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
+  final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
