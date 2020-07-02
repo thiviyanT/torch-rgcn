@@ -39,7 +39,7 @@ The hyper-parameters for the different experiments can be found in [YAML](https:
 * `e-rgcn` - Embedding RGCN Model
 * `g-rgcn` - Global Readout RGCN Model
 
-### Experiments
+### Experiments
 * `rp` - Relation Prediction
 * `nc` - Node Classification 
 
