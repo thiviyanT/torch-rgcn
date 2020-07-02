@@ -31,8 +31,8 @@ def load_strings(file):
         return [line.split() for line in f]
 
 
-# TODO: May be rewrite this without RDFlib dependency - Low priority
-def load_node_classification_data(name, use_test_set=False, limit=None, disable_cache=True, val_prop=0.4):
+# TODO: May need to rewrite this without RDFlib - Low priority
+def load_node_classification_data(name, use_test_set=False, limit=None, disable_cache=True, val_prop=0.4, prune=False):
     """
     Load knowledge graphs for node classification experiment.
 
@@ -208,15 +208,19 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
 
     # Mappings for nodes (n) and relations (r)
     nodes, rels = set(), set()
-    for triple in train + val + test:
-        nodes.add(triple[0])
-        rels.add(triple[1])
-        nodes.add(triple[2])
+    for s, p, o in train + val + test:
+        nodes.add(s)
+        rels.add(p)
+        nodes.add(o)
 
     i2n, i2r = list(nodes), list(rels)
     n2i, r2i = {n: i for i, n in enumerate(nodes)}, {r: i for i, r in enumerate(rels)}
 
+    all_triples = set()
+    for s, p, o in train + val + test:
+        all_triples.add((n2i[s], r2i[p], n2i[o]))
+
     train = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in train]
     test = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in test]
 
-    return (n2i, i2n), (r2i, i2r), train, test
+    return (n2i, i2n), (r2i, i2r), train, test, all_triples

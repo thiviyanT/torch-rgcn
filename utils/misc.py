@@ -41,9 +41,9 @@ def generate_candidates(s, p, entity_dictionary):
     """ Generate a list of candidate triples by replacing the tail with every entity for each test triplet """
     return [(s, p, o) for o in range(len(entity_dictionary))]
 
-def filter_triples(candidate_triples, all_triples, correct_triple, device='cpu'):
+def filter_triples(candidate_triples, all_triples, correct_triple):
     """ Filter out candidate_triples that are present in all_triples, but keep correct_triple """
-    return [triple for triple in candidate_triples if not triple in all_triples or triple == correct_triple]
+    return [triple for triple in set(candidate_triples) if not triple in all_triples or triple == correct_triple]
 
 def compute_mrr(rank):
     """ Compute Mean Reciprocal Rank for a given list of ranked triples """
@@ -58,8 +58,8 @@ def compute_hits(rank, k):
 
 def rank_triple(scores, candidate_triples, correct_triple):
     """ Finds rank of the correct triple after sorting candidates by their scores """
-    sorted_candidates = [list(i[0]) for i in sorted(zip(candidate_triples.tolist(), scores.tolist()), key=lambda i: -i[1])]
-    rank = (sorted_candidates.index(correct_triple) + 1)
+    sorted_candidates = [tuple(i[0]) for i in sorted(zip(candidate_triples.tolist(), scores.tolist()), key=lambda i: -i[1])]
+    rank = sorted_candidates.index(correct_triple) + 1
     return rank
 
 def compute_metrics(scores, candidates, correct_triple, k=None):
