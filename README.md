@@ -8,9 +8,7 @@ In our workshop paper, we reproduce the relation prediction  and node classifica
 paper and furthermore, present three RGCN extensions that address the shortcomings of typical GCNs.
  
 Our workshop paper: 
-[Reproducing the Relational Graph Convolutional Network: Lessons We Learned!](https://www.overleaf.com/read/hnvnwhhhtxrt) 
-
-[#TODO: Upload paper to Arxiv]
+ [#TODO: Upload paper to Arxiv]
 
 ## Getting started
 
@@ -90,9 +88,9 @@ In The Semantic Web: Research and Applications. 2012.**
 
 ### Relation Prediction 
 
-Original Relation Prediction  Implementation: https://github.com/MichSchli/RelationPrediction 
+Original Relation Prediction Implementation: https://github.com/MichSchli/RelationPrediction 
 
-Run relation Prediction  using the standard RGCN model using:
+To run the relation prediction experiment using the RGCN model using:
 
 `python experiments/predict_links.py with configs/rgcn/rp-{DATASET}.yaml`
 
@@ -102,7 +100,7 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k
 
 Original Node Classification Implementation: https://github.com/tkipf/relational-gcn
 
-Run node classification using the standard RGCN model using:
+To run the node classification experiment using the RGCN model using:
 
 `python experiments/classify_nodes.py with configs/rgcn/nc-{DATASET}.yaml`
 
