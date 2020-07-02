@@ -31,7 +31,7 @@ Now, you may install the RGCN module with:
 ### Configuration files
 
 The hyper-parameters for the different experiments can be found in [YAML](https://yaml.org/) files under 
-[configs](configs). The naming convention of the files is as follows: `{MODEL}/{EXPERIMENT}-{DATASET}.yaml`
+[configs](configs). The naming convention of the files is as follows: `configs/{MODEL}/{EXPERIMENT}-{DATASET}.yaml`
 
 ### Models
 * `rgcn` - Standard RGCN Model 
@@ -183,7 +183,6 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`
 | FB15k-237                     | -                                | -                      | -                       | -                       |
 | WN18                          | -                                | -                      | -                       | -                       |
 | WN18RR                        | -                                | -                      | -                       | -                       |
-| Wikidata 5M                   | -                                | -                      | -                       | -                       |
 
 #### Node Classification using g-RGCN
 
