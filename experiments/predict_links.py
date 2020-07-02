@@ -1,6 +1,6 @@
-from misc import create_experiment, negative_sampling, generate_candidates, filter_triples, compute_metrics
-from rgcn.models import RelationPredictor, CompressionRelationPredictor
-from data import load_link_prediction_data
+from utils.misc import create_experiment, negative_sampling, generate_candidates, filter_triples, compute_metrics
+from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
+from utils.data import load_link_prediction_data
 import torch.nn.functional as F
 import numpy as np
 import random
@@ -27,31 +27,34 @@ def train(dataset,
           _run):
 
     # Set default values
-    epochs = training["epochs"] if "epochs" in training else 50
+    max_epochs = training["epochs"] if "epochs" in training else 500
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
-    test_run = evaluation["test_run"] if "test_run" in evaluation else False
-    filtered = evaluation["filtered"] if "filtered" in evaluation else True
-    eval_size =  evaluation["eval_size"] if "eval_size" in evaluation else None
-    eval_on_cuda = evaluation["use_cuda"] if "use_cuda" in evaluation else False
+    final_run = evaluation["final_run"] if "final_run" in evaluation else False
+    filtered = evaluation["filtered"] if "filtered" in evaluation else False
+    eval_size = evaluation["early_stopping"]["eval_size"] if "eval_size" in evaluation["early_stopping"] else 100
     eval_every = evaluation["early_stopping"]["check_every"] if "check_every" in evaluation["early_stopping"] else 100
     early_stop_metric = evaluation["early_stopping"]["metric"] if "metric" in evaluation["early_stopping"] else 'mrr'
     num_stops = evaluation["early_stopping"]["num_stops"] if "num_stops" in evaluation["early_stopping"] else 2
     min_epochs = evaluation["early_stopping"]["min_epochs"] if "min_epochs" in evaluation["early_stopping"] else 1000
+    final_eval_size = evaluation["final_eval_size"] if "final_eval_size" in evaluation else None
 
     # Note: Validation dataset will be used as test if this is not a test run
-    (n2i, i2n), (r2i, i2r), train, test = load_link_prediction_data(dataset, use_test_set=test_run)
+    (n2i, i2n), (r2i, i2r), train, test, all_triples = load_link_prediction_data(dataset["name"], use_test_set=final_run)
 
     # Check for available GPUs
     use_cuda = use_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
-    eval_on_cuda = eval_on_cuda and torch.cuda.is_available()
-    eval_device = torch.device('cuda' if eval_on_cuda else 'cpu')
 
     num_nodes = len(n2i)
     num_relations = len(r2i)
-    all_triples = train + test  # Required for filtering out triples
-    test = torch.tensor(test, dtype=torch.long, device=eval_device)
+    test = torch.tensor(test, dtype=torch.long, device=device)
+
+    # Split off a portion of training data for early stopping
+    random.shuffle(train)
+    early_stop_sample = train[:eval_size]
+    train = train[eval_size:]
+
 
     if encoder["model"] == 'rgcn':
         model = RelationPredictor
@@ -88,9 +91,11 @@ def train(dataset,
 
     best_mrr = 0
     num_no_improvements = 0
+    epoch_counter = 0
 
     print("Start training...")
-    for epoch in range(1, epochs+1):
+    for epoch in range(1, max_epochs+1):
+        epoch_counter += 1
         t1 = time.time()
         optimiser.zero_grad()
         model.train()
@@ -125,27 +130,16 @@ def train(dataset,
         if epoch % eval_every == 0:
             print("Starting evaluation...")
             with torch.no_grad():
-                if use_cuda and not eval_on_cuda:
-                    print('Evaluating on CPU')
-                    print('hit')
-                    model.cpu()
-
                 model.eval()
                 mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
-                if eval_size is None:
-                    test_sample = test
-                else:
-                    num_test_triples = test.shape[0]
-                    test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
-
-                for s, p, o in tqdm.tqdm(test_sample):
-                    s, p, o = s.item(), p.item(), o.item()
-                    correct_triple = [s, p, o]
+                for s, p, o in tqdm.tqdm(early_stop_sample):
+                    s, p, o = s, p, o
+                    correct_triple = (s, p, o)
                     candidates = generate_candidates(s, p, n2i)
                     if filtered:
                         candidates = filter_triples(candidates, all_triples, correct_triple)
-                    candidates = torch.tensor(candidates, dtype=torch.long, device=eval_device)
+                    candidates = torch.tensor(candidates, dtype=torch.long, device=device)
                     scores = model(candidates)
                     mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
                     mrr_scores.append(mrr)
@@ -164,11 +158,12 @@ def train(dataset,
             _run.log_scalar("test.hits_at_3", hits_at_3, step=epoch)
             _run.log_scalar("test.hits_at_10", hits_at_10, step=epoch)
 
-            if use_cuda:
-                model.cuda()
-
+            filtered = 'filtered' if filtered else 'raw'
             print(f'[Epoch {epoch}] Loss: {loss.item():.5f} Forward: {(t2 - t1):.3f}s Backward: {(t3 - t2):.3f}s '
-                  f'MRR: {mrr:.3f} Hits@1: {hits_at_1:.3f} MRR: {hits_at_3:.3f} MRR: {hits_at_10:.3f}')
+                  f'MRR({filtered}): {mrr:.3f} \t'
+                  f'Hits@1({filtered}): {hits_at_1:.3f} \t'
+                  f'Hits@3({filtered}): {hits_at_3:.3f} \t'
+                  f'Hits@10({filtered}): {hits_at_10:.3f}')
 
             # Early stopping
             if mrr > best_mrr:
@@ -182,7 +177,7 @@ def train(dataset,
                 best_mrr = mrr
             else:
                 num_no_improvements += 1
-            if epoch > min_epochs and num_stops == num_no_improvements:
+            if epoch > min_epochs and num_stops == num_no_improvements or epoch > max_epochs:
                 print('Early Stopping!')
                 break
             else:
@@ -199,15 +194,20 @@ def train(dataset,
     with torch.no_grad():
         model.eval()
 
-        # Final evaluation is carried out on the entire dataset
+        if final_eval_size is None or final_run:
+            test_sample = test
+        else:
+            num_test_triples = test.shape[0]
+            test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
 
+        # Final evaluation is carried out on the entire dataset
         for s, p, o in tqdm.tqdm(test_sample):
             s, p, o = s.item(), p.item(), o.item()
-            correct_triple = [s, p, o]
+            correct_triple = (s, p, o)
             candidates = generate_candidates(s, p, n2i)
             if filtered:
                 candidates = filter_triples(candidates, all_triples, correct_triple)
-            candidates = torch.tensor(candidates, dtype=torch.long, device=eval_device)
+            candidates = torch.tensor(candidates, dtype=torch.long, device=device)
             scores = model(candidates)
             mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
             mrr_scores.append(mrr)
@@ -225,4 +225,9 @@ def train(dataset,
     _run.log_scalar("test.hits_at_3", hits_at_3)
     _run.log_scalar("test.hits_at_10", hits_at_10)
 
-    print(f'[Final Evaluation] MRR: {mrr:.3f} Hits@1: {hits_at_1:.3f} MRR: {hits_at_3:.3f} MRR: {hits_at_10:.3f}')
+    print(f'[Final Evaluation] '
+          f'Total Epoch {epoch_counter} \t'
+          f'MRR({filtered}): {mrr:.3f} \t'
+          f'Hits@1({filtered}): {hits_at_1:.3f} \t'
+          f'Hits@3({filtered}): {hits_at_3:.3f} \t'
+          f'Hits@10({filtered}): {hits_at_10:.3f}')
