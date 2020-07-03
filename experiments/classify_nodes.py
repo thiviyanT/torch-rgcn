@@ -2,6 +2,7 @@ from utils.misc import create_experiment
 from torch_rgcn.models import NodeClassifier, EmbeddingNodeClassifier, GlobalNodeClassifier
 from utils.data import load_node_classification_data
 from sklearn.metrics import accuracy_score
+from statistics import stdev
 import torch.nn as nn
 import torch
 import time
@@ -15,16 +16,18 @@ Reproduced as described in https://arxiv.org/abs/1703.06103 (Section 3).
 ex = create_experiment(name='R-GCN Node Classification', database='node_class')
 
 
-@ex.automain
+@ex.capture
 def train_model(dataset,
                 training,
                 rgcn,
                 evaluation,
+                repeat,
                 _run):
 
     assert training is not None, "Training configuration is not specified!"
 
     # Set default values
+    repeat = f"_{repeat}"
     epochs = training["epochs"] if "epochs" in training else 50
     nhid = rgcn["hidden_size"] if "hidden_size" in rgcn else 16
     nlayers = rgcn["num_layers"] if "num_layers" in rgcn else 2
@@ -95,7 +98,7 @@ def train_model(dataset,
     )
 
     print("Starting training...")
-    for epoch in range(0, epochs+1):
+    for epoch in range(1, epochs+1):
         t1 = time.time()
         criterion = nn.CrossEntropyLoss()
         model.train()
@@ -128,17 +131,38 @@ def train_model(dataset,
             classes = model()[test_idx, :].argmax(dim=-1)
             test_accuracy = accuracy_score(classes.cpu(), test_lbl.cpu())  # Note: Accuracy is always computed on CPU
 
-        _run.log_scalar("training.loss", loss.item(), step=epoch)
-        _run.log_scalar("training.accuracy", train_accuracy, step=epoch)
-        _run.log_scalar("test.accuracy", test_accuracy, step=epoch)
+        _run.log_scalar(f"training.loss{repeat}", loss.item(), step=epoch)
+        _run.log_scalar(f"training.accuracy{repeat}", train_accuracy, step=epoch)
+        _run.log_scalar(f"test.accuracy{repeat}", test_accuracy, step=epoch)
         print(f'[Epoch {epoch}] Loss: {loss.item():.5f} Forward: {(t2 - t1):.3f}s Backward: {(t3 - t2):.3f}s '
               f'Train Accuracy: {train_accuracy:.2f} Test Accuracy: {test_accuracy:.2f}')
 
     print('Training is complete!')
 
-    print("Starting final evaluation...")
+    print("Starting evaluation...")
     model.eval()
     classes = model()[test_idx, :].argmax(dim=-1)
-    test_accuracy = accuracy_score(classes.cpu(), test_lbl.cpu())  # Note: Accuracy is always computed on CPU
-    _run.log_scalar("test.accuracy", test_accuracy)
-    print(f'[Final Evaluation] Test Accuracy: {test_accuracy:.2f}')
+    test_accuracy = accuracy_score(classes.cpu(), test_lbl.cpu()) * 100  # Note: Accuracy is always computed on CPU
+    _run.log_scalar(f"test.accuracy{repeat}", test_accuracy)
+    print(f'[Evaluation] Test Accuracy: {test_accuracy:.2f}')
+    return test_accuracy
+
+@ex.automain
+def repeat(_run, repeats=1):
+    """ Repeats experiments and reports average and standard deviation """
+    test_accuracies = []
+    for i in range(1, repeats+1):
+        test_accuracy = train_model(repeat=i)
+        test_accuracies.append(test_accuracy)
+
+    avg = sum(test_accuracies)/len(test_accuracies)
+    std = stdev(test_accuracies) if len(test_accuracies) != 1 else 0
+
+    avg = round(avg, 2)
+    std = round(std, 2)
+
+    _run.log_scalar(f"test.accuracy", avg)
+    _run.log_scalar(f"test.accuracy_std", std)
+    _run.log_scalar(f"repeats", repeats)
+
+    print(f'[Summary] Test Accuracy: {avg:.2f} -/+ {std:.2f} { f"({repeats} runs)"  if repeats > 1 else ""}')
