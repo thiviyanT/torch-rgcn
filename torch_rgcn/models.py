@@ -174,7 +174,6 @@ class NodeClassifier(nn.Module):
             x = F.relu(x)
             x = self.rgc2(features=x)
 
-        x = F.log_softmax(x, dim=1)
         return x
 
 
@@ -269,7 +268,6 @@ class EmbeddingNodeClassifier(NodeClassifier):
             x = F.relu(x)
             x = self.rgc2(features=x)
 
-        x = F.log_softmax(x, dim=1)
         return x
 
 
@@ -313,5 +311,4 @@ class GlobalNodeClassifier(NodeClassifier):
             x = F.relu(x)
             x = self.rgc2(features=x)
 
-        x = F.log_softmax(x, dim=1)
         return x
