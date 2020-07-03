@@ -147,6 +147,7 @@ def train_model(dataset,
     print(f'[Evaluation] Test Accuracy: {test_accuracy:.2f}')
     return test_accuracy
 
+
 @ex.automain
 def repeat(_run, repeats=1):
     """ Repeats experiments and reports average and standard deviation """
@@ -155,14 +156,15 @@ def repeat(_run, repeats=1):
         test_accuracy = train_model(repeat=i)
         test_accuracies.append(test_accuracy)
 
-    avg = sum(test_accuracies)/len(test_accuracies)
-    std = stdev(test_accuracies) if len(test_accuracies) != 1 else 0
+    avg = sum(test_accuracies)/len(test_accuracies)  # Average
+    std = stdev(test_accuracies) if len(test_accuracies) != 1 else 0  # Standard Deviation
+    ste = std / (len(test_accuracies)**0.5)  # Standard Error
 
     avg = round(avg, 2)
-    std = round(std, 2)
+    ste = round(ste, 2)
 
     _run.log_scalar(f"test.accuracy", avg)
-    _run.log_scalar(f"test.accuracy_std", std)
+    _run.log_scalar(f"test.accuracy_ste", ste)
     _run.log_scalar(f"repeats", repeats)
 
-    print(f'[Summary] Test Accuracy: {avg:.2f} -/+ {std:.2f} { f"({repeats} runs)"  if repeats > 1 else ""}')
+    print(f'[Summary] Test Accuracy: {avg:.2f} -/+ {ste:.2f} { f"({repeats} runs)"  if repeats > 1 else ""}')
