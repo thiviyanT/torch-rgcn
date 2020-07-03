@@ -191,14 +191,6 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`
 | BGS                           | -                                |
 | MUTAG                         | -                                |
 
-#### Node Classification using o-RGCN
-
-| Dataset                       | Accuracy                         |
-| ----------------------------- |:--------------------------------:|
-| AIFB                          | -                                |
-| AM                            | -                                |
-| BGS                           | -                                |
-| MUTAG                         | -                                |
 
 ## Unit Tests 
 
