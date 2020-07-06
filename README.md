@@ -15,13 +15,13 @@ Requirements:
 * Conda >= 4.8
 * Python >= 3.7
 
-To install the necessary packages and download all datasets use:
+To download all datasets, use: `bash get_data.sh`
 
-`bash setup_dependencies.sh`
+To install the necessary packages, use: `bash setup_dependencies.sh`
 
-Now, you may install the RGCN module with: 
+Now, you can install the RGCN module with: `pip install -e .`  
 
-`pip install -e .`
+(Note: You may need to manually activate the virtual environment using `conda activate torch_rgcn_venv`)
 
 ## Usage
 
@@ -113,7 +113,7 @@ To run the node classification experiment use:
 
 Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
-### RGCN with Compressed inputs 
+### RGCN with Compressed Feature Matrix 
 
 To run the relation prediction experiment use: 
 
