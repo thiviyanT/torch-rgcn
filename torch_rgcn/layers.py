@@ -20,7 +20,6 @@ class RelationalGraphConvolution(Module):
                  decomposition=None,
                  vertical_stacking=False,
                  reset_mode='xavier',
-                 global_attribute=False,
                  device='cpu'):
         super(RelationalGraphConvolution, self).__init__()
 
@@ -135,7 +134,7 @@ class RelationalGraphConvolution(Module):
 
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
-        # Horizontally/Vertically stack adjacency matrices
+        # Stack adjacency matrices (vertically/horizontally)
         adj_indices, adj_size = stack_matrices(
             triples,
             num_nodes,
