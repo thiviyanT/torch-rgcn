@@ -1,4 +1,4 @@
-from rgcn.utils import add_inverse_and_self, sum_sparse, stack_matrices, drop_edges
+from torch_rgcn.utils import add_inverse_and_self, sum_sparse, stack_matrices, drop_edges
 import torch
 
 
@@ -80,41 +80,36 @@ def test_sum_sparse():
 
     # Test with vertical stacking
     ver_ind = torch.tensor([
-        [0, 1],
         [0, 0],
+        [0, 1],
         [0, 2],
-        [0, 3],
-        [22, 1],
-        [22, 2],
-        [32, 0],
-        [22, 4],
-        [32, 1],
-        [38, 2]
+        [4, 1],
+        [8, 2],
+        [7, 2]
     ])
-    ver_size = (42, 6)
+    ver_size = (9, 3)
     num_edges = ver_ind.size(0)
     vals = torch.ones(num_edges, dtype=torch.float)
-    vals = vals / sum_sparse(ver_ind, vals, ver_size)
-    expected_response = torch.tensor([1/4, 1/4, 1/4, 1/4, 1/3, 1/3, 1/2, 1/3, 1/2, 1])
+    vals = vals / sum_sparse(ver_ind, vals, ver_size, row_normalisation=True)
+    # adj = torch.sparse.FloatTensor(indices=ver_ind.t(), values=vals, size=ver_size).to_dense()
+    expected_response = torch.tensor([1/3, 1/3, 1/3, 1, 1, 1])
     assert torch.all(torch.eq(vals, expected_response))
 
     # Test with horizontal stacking
     hor_ind = torch.tensor([
-        [0, 1],
+        [0, 0],
+        [1, 0],
+        [2, 0],
         [1, 4],
-        [2, 9],
-        [1, 18],
-        [2, 25],
-        [3, 32],
-        [0, 36],
-        [1, 37],
-        [2, 38]
+        [2, 8],
+        [2, 7]
     ])
-    hor_size = (6, 42)
+    hor_size = (3, 9)
     num_edges = hor_ind.size(0)
     vals = torch.ones(num_edges, dtype=torch.float)
-    vals = vals / sum_sparse(hor_ind, vals, hor_size)
-    expected_response = torch.tensor([1/2, 1/3, 1/3, 1/3, 1/3, 1, 1/2, 1/3, 1/3])
+    vals = vals / sum_sparse(hor_ind, vals, hor_size, row_normalisation=False)
+    # adj = torch.sparse.FloatTensor(indices=hor_ind.t(), values=vals, size=hor_size).to_dense()
+    expected_response = torch.tensor([1/3, 1/3, 1/3, 1, 1, 1])
     assert torch.all(torch.eq(vals, expected_response))
 
 
