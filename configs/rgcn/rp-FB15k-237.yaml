@@ -2,8 +2,8 @@ dataset:
   name: FB15k-237
 
 training:
-  epochs: 1000  # Limit the number of training epochs
-  neg_sample_rate: 1  # Number of negative samples to produce per triple (Paper report 1 and Michael's code is 10)
+  epochs: 10000  # Limit the number of training epochs
+  neg_sample_rate: 10  # Number of negative samples to produce per triple (Paper report 1 and Michael's code is 10)
   optimiser:
     algorithm: adam
     weight_decay: 0.0
@@ -30,9 +30,9 @@ evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
   filtered: True  # If true, reports filtered metrics. Otherwise, raw metrics are computed.
   early_stopping:
-    check_every: 10  # Evaluate model performance at every n epoch interval
+    check_every: 1000  # Evaluate model performance at every n epoch interval
     metric: mrr
     min_epochs: 100  # Minimum of epochs before early stopping can be applied
-    num_stops: 5  # If no improvement in metric is detected after n times, apply early stopping
-    eval_size: 200  # Number of triples to randomly sample from training dataset (Default=100)
+    num_stops: 1  # If no improvement in metric is detected after n times, apply early stopping
+#    eval_size: 200  # Number of triples to randomly sample from training dataset (Default=100)
 #  final_eval_size: 10000  # Limit the number of triples to randomly sample from test dataset
