@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from torch import nn
 import torch
 import copy
-import math
 
 
 ######################################################################################
@@ -81,8 +80,7 @@ class RelationPredictor(nn.Module):
         self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
         # Initialise Parameters
-        stdv = 1.0 / math.sqrt(self.relations.size(1))
-        self.relations.data.uniform_(-stdv, stdv)
+        nn.init.xavier_uniform_(self.relations)
 
     def distmult_score(self, triples, nodes, relations):
         """ Simple DistMult scoring function (from https://arxiv.org/pdf/1412.6575.pdf) """
