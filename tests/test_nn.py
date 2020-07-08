@@ -1,4 +1,4 @@
-from rgcn.layers import RelationalGraphConvolution
+from torch_rgcn.layers import RelationalGraphConvolution
 import torch
 
 
