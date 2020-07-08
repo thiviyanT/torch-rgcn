@@ -145,8 +145,8 @@ class RelationalGraphConvolution(Module):
         num_triples = adj_indices.size(0)
         vals = torch.ones(num_triples, dtype=torch.float, device=self.device)
 
-        # Apply row-wise normalisation
-        vals = vals / sum_sparse(adj_indices, vals, adj_size, device=self.device)
+        # Apply normalisation (vertical-stacking -> row-wise normalisation & horizontal-stacking -> column-wise normalisation)
+        vals = vals / sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=self.device)
 
         # Construct adjacency matrix
         adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
