@@ -109,9 +109,9 @@ def train_model(dataset,
 
         if layer1_l2_penalty > 0.0:
             # Apply l2 penalty on first layer weights
-            if decomposition['type'] == 'basis':
+            if decomposition is not None and decomposition['type'] == 'basis':
                 layer1_l2 = model.rgc1.bases.pow(2).sum() + model.rgc1.comps.pow(2).sum()
-            elif decomposition['type'] == 'block':
+            elif decomposition is not None and decomposition['type'] == 'block':
                 layer1_l2 = model.rgc1.blocks.pow(2).sum()
             else:
                 layer1_l2 = model.rgc1.weights.pow(2).sum()
@@ -126,10 +126,10 @@ def train_model(dataset,
         with torch.no_grad():
             model.eval()
             classes = model()[train_idx, :].argmax(dim=-1)
-            train_accuracy = accuracy_score(classes.cpu(), train_lbl.cpu())  # Note: Accuracy is always computed on CPU
+            train_accuracy = accuracy_score(classes.cpu(), train_lbl.cpu()) * 100  # Note: Accuracy is always computed on CPU
 
             classes = model()[test_idx, :].argmax(dim=-1)
-            test_accuracy = accuracy_score(classes.cpu(), test_lbl.cpu())  # Note: Accuracy is always computed on CPU
+            test_accuracy = accuracy_score(classes.cpu(), test_lbl.cpu()) * 100  # Note: Accuracy is always computed on CPU
 
         _run.log_scalar(f"training.loss{repeat}", loss.item(), step=epoch)
         _run.log_scalar(f"training.accuracy{repeat}", train_accuracy, step=epoch)
