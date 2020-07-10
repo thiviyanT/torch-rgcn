@@ -132,7 +132,7 @@ class NodeClassifier(nn.Module):
             nhid = nclass
 
         if nlayers == 2:
-            assert nhid is not None, "Requested two layers but nhid not specified!"
+            assert nhid is not None, "Number of hidden layers not specified!"
 
         triples = torch.tensor(triples, dtype=torch.long, device=device)
         with torch.no_grad():

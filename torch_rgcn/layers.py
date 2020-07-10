@@ -53,10 +53,10 @@ class RelationalGraphConvolution(Module):
             self.weights = Parameter(torch.FloatTensor(num_relations, in_dim, out_dim))
         elif self.weight_decomp == 'basis':
             # Weight Regularisation through Basis Decomposition
-            assert self.num_bases > 0, \
+            assert num_bases > 0, \
                 'Number of bases should be set to higher than zero for basis decomposition!'
-            self.bases = Parameter(torch.FloatTensor(self.num_bases, in_dim, out_dim))
-            self.comps = Parameter(torch.FloatTensor(num_relations, self.num_bases))
+            self.bases = Parameter(torch.FloatTensor(num_bases, in_dim, out_dim))
+            self.comps = Parameter(torch.FloatTensor(num_relations, num_bases))
         elif self.weight_decomp == 'block':
             # Weight Regularisation through Block Diagonal Decomposition
             assert self.num_blocks > 0, \
