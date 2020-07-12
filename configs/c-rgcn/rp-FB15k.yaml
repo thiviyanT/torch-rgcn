@@ -8,7 +8,7 @@ training:
     algorithm: adam
     weight_decay: 0.0
     learn_rate: 0.01
-  use_cuda: True  # If true, model is trained on GPU
+  use_cuda: False  # If true, model is trained on GPU
 
 encoder:
   model: c-rgcn
