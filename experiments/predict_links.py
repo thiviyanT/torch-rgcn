@@ -42,6 +42,16 @@ def train(dataset,
     # Note: Validation dataset will be used as test if this is not a test run
     (n2i, i2n), (r2i, i2r), train, test, all_triples = load_link_prediction_data(dataset["name"], use_test_set=final_run)
 
+    if "decomposition" in encoder and encoder["decomposition"]["type"] == 'block':
+        # Pad the node list to make it divisible by the number of blocks
+        added = 0
+        while len(i2n) % encoder["decomposition"]["num_blocks"] != 0:
+            label = 'null' + str(added)
+            i2n.append(label)
+            n2i[label] = len(i2n) - 1
+            added += 1
+        print(f'nodes padded to {len(i2n)} to make it divisible by {encoder["decomposition"]["num_blocks"]} (added {added} null nodes).')
+
     # Check for available GPUs
     use_cuda = use_cuda and torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
