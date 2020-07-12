@@ -35,8 +35,10 @@ def sum_sparse(indices, values, size, row_normalisation=True, device='cpu'):
         size = size[1], size[0]
 
     ones = torch.ones((size[1], 1), device=device)
-    sums = torch.spmm(torch.sparse.FloatTensor(indices.t(), values, torch.Size(size)), ones)
+    values = torch.sparse.FloatTensor(indices.t(), values, torch.Size(size))
+    sums = torch.spmm(values, ones)
     sums = sums[indices[:, 0], 0]
+
     return sums.view(k)
 
 def add_inverse_and_self(triples, num_nodes, num_rels, device='cpu'):
