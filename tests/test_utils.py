@@ -29,50 +29,59 @@ def test_stack_matrices():
     """ Unit test for stack_matrices """
 
     triples = torch.tensor([
-        [0, 0, -1],
-        [1, 1, -2],
-        [2, 2, -3],
-        [-1, 3, 0],
-        [-2, 4, 1],
-        [-3, 5, 2],
+        [0, 0, 3],
+        [1, 1, 4],
+        [2, 2, 5],
+        [3, 3, 0],
+        [4, 4, 1],
+        [5, 5, 2],
         [0, 6, 0],
         [1, 6, 1],
-        [2, 6, 2]
+        [2, 6, 2],
+        [3, 6, 3],
+        [4, 6, 4],
+        [5, 6, 5]
     ])
-    num_nodes = 6
+    num_nodes = 9
     num_relations = 3
 
     # Test vertical stacking
     ver_ind, ver_size = stack_matrices(triples, num_nodes, num_relations * 2 + 1, vertical_stacking=True)
     expected_response = torch.tensor([
-        [0, -1],
-        [7, -2],
-        [14, -3],
-        [17, 0],
-        [22, 1],
-        [27, 2],
-        [36, 0],
-        [37, 1],
-        [38, 2]
+        [ 0,  3],
+        [10,  4],
+        [20,  5],
+        [30,  0],
+        [40,  1],
+        [50,  2],
+        [54,  0],
+        [55,  1],
+        [56,  2],
+        [57,  3],
+        [58,  4],
+        [59,  5]
     ])
     assert torch.all(torch.eq(ver_ind, expected_response))
-    assert ver_size == (42, 6)
+    assert ver_size == (63, 9)
 
     # Test horizontal stacking
     hor_ind, hor_size = stack_matrices(triples, num_nodes, num_relations * 2 + 1, vertical_stacking=False)
     expected_response = torch.tensor([
-        [0, -1],
-        [1, 4],
-        [2, 9],
-        [-1, 18],
-        [-2, 25],
-        [-3, 32],
-        [0, 36],
-        [1, 37],
-        [2, 38]
+        [0, 3],
+        [1, 13],
+        [2, 23],
+        [3, 27],
+        [4, 37],
+        [5, 47],
+        [0, 54],
+        [1, 55],
+        [2, 56],
+        [3, 57],
+        [4, 58],
+        [5, 59]
     ])
     assert torch.all(torch.eq(hor_ind, expected_response))
-    assert hor_size == (6, 42)
+    assert hor_size == (9, 63)
 
 
 def test_sum_sparse():
@@ -100,16 +109,17 @@ def test_sum_sparse():
         [0, 0],
         [1, 0],
         [2, 0],
+        [3, 0],
         [1, 4],
         [2, 8],
         [2, 7]
     ])
-    hor_size = (3, 9)
+    hor_size = (4, 9)
     num_edges = hor_ind.size(0)
     vals = torch.ones(num_edges, dtype=torch.float)
     vals = vals / sum_sparse(hor_ind, vals, hor_size, row_normalisation=False)
     # adj = torch.sparse.FloatTensor(indices=hor_ind.t(), values=vals, size=hor_size).to_dense()
-    expected_response = torch.tensor([1/3, 1/3, 1/3, 1, 1, 1])
+    expected_response = torch.tensor([1/4, 1/4, 1/4, 1/4, 1, 1, 1])
     assert torch.all(torch.eq(vals, expected_response))
 
 
