@@ -1,11 +1,11 @@
-# Torch RGCN 
+# Torch-RGCN 
 
-Relational Graph Convolutional Network embeds graphs, such as a Knowledge Graph, into a latent space
-by passing messages along different relations.
+Relational Graph Convolutional Network perform representation learning on multi-relational graphs, such as 
+Knowledge Graphs, by handling message propagation along different relations separately.
 
 ![Relational Graph Encoding](images/diagram.png)
 
-This is a PyTorch implementation of the RGCN, originally proposed by Schlichtkrull *et al.* in  
+Torch-RGCN is a PyTorch implementation of the RGCN, originally proposed by Schlichtkrull *et al.* in  
 [Modeling Relational Data with Graph Convolutional Networks](https://arxiv.org/abs/1703.06103).
  
 In our workshop paper, we reproduce the relation prediction  and node classification experiments from the original 
