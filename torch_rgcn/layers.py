@@ -135,29 +135,25 @@ class RelationalGraphConvolution(Module):
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
         # Stack adjacency matrices (vertically/horizontally)
-        hor_indices, hor_size = stack_matrices(
+        adj_indices, adj_size = stack_matrices(
             triples,
             num_nodes,
             num_relations,
-            vertical_stacking=False
-        )
-        ver_indices, ver_size = stack_matrices(
-            triples,
-            num_nodes,
-            num_relations,
-            vertical_stacking=True
+            vertical_stacking=vertical_stacking
         )
 
-        num_triples = ver_indices.size(0)
+        num_triples = adj_indices.size(0)
         vals = torch.ones(num_triples, dtype=torch.float, device=self.device)
         # Apply row-wise normalisation
-        vals = vals / sum_sparse(ver_indices, vals, ver_size, row_normalisation=True, device=self.device)
+        sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=self.device)
+
+        if not vertical_stacking:
+            sums = torch.cat([sums[num_relations:2*num_relations], sums[:num_relations], sums[2*num_relations:]], dim=0)
+
+        vals = vals / sums
 
         # Construct adjacency matrix
-        if self.vertical_stacking:
-            adj = torch.sparse.FloatTensor(indices=ver_indices.t(), values=vals, size=ver_size)
-        else:
-            adj = torch.sparse.FloatTensor(indices=hor_indices.t(), values=vals, size=hor_size)
+        adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
         # Apply weight regularisation
         if weight_decomp is None:
