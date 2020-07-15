@@ -35,8 +35,3 @@ echo "Downloading WN18..."
 wget "https://www.dropbox.com/sh/egwgth011epusq7/AABWx1YWuEaMoumHDOknbCA9a?dl=1" -O "data/wn18.zip"
 unzip "data/wn18.zip" -d "data/wn18"
 echo -e "Done. \n\n"
-
-echo "Downloading WN18RR..."
-wget "https://www.dropbox.com/sh/e0c8axhazom8y9p/AAAP3CvZp9IZAophUkz6YZC3a?dl=1" -O "data/wn18rr.zip"
-unzip "data/wn18rr.zip" -d "data/wn18rr"
-echo -e "Done. \n\n"

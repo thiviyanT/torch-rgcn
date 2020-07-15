@@ -69,9 +69,7 @@ In The Semantic Web: Research and Applications, 2012.
  * `WN18` from 
  Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
  *[Translating embeddings for modeling multi-relational data](http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-rela)*.
- In Advances in Neural Information Processing Systems, 2013.
- * `WN18RR` from 
- Tim  Dettmers,  Pasquale  Minervini,  Pontus  Stenetorp,  and  Sebastian  Riedel. 
+ In Advances in Neural Information Processing Systems, 2013. 
  *[Convolutional  2D knowledge graph embeddings](https://arxiv.org/abs/1707.01476).*
  In Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence (AAAI), 2018. 
  * `FB15K` from 
@@ -93,7 +91,7 @@ To run the relation prediction experiment using the RGCN model using:
 
 `python experiments/predict_links.py with configs/rgcn/rp-{DATASET}.yaml`
 
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237`, `WN18` or `WN18RR`.
+Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
 
 ### Node Classification
 
@@ -121,7 +119,7 @@ To run the relation prediction experiment use:
 
 `python experiments/predict_links.py with configs/c-rgcn/rp-{DATASET}.yaml`
 
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237`, `WN18` or `WN18RR`.
+Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
 
 ### RGCN with Global Readouts
 
@@ -143,7 +141,6 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`
 | FB15k                         | -                                | -                      | -                       | -                       |
 | FB15k-237                     | -                                | -                      | -                       | -                       |
 | WN18                          | -                                | -                      | -                       | -                       |
-| WN18RR                        | -                                | -                      | -                       | -                       |
 
 #### Node Classification using standard RGCN
 
@@ -172,7 +169,6 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`
 | FB15k                         | -                                | -                      | -                       | -                       |
 | FB15k-237                     | -                                | -                      | -                       | -                       |
 | WN18                          | -                                | -                      | -                       | -                       |
-| WN18RR                        | -                                | -                      | -                       | -                       |
 
 #### Node Classification using g-RGCN
 
