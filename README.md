@@ -1,6 +1,6 @@
 # Torch-RGCN 
 
-Relational Graph Convolutional Network perform representation learning on multi-relational graphs, such as 
+Relational Graph Convolutional Network performs representation learning on multi-relational graphs, such as 
 Knowledge Graphs, by handling message propagation along different relations separately.
 
 ![Relational Graph Encoding](images/diagram.png)
