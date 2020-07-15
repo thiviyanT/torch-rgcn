@@ -165,3 +165,58 @@ def test_drop_edges():
         if i in other_edges:
             count_other_edges += 1
     assert count_self_loops == 3 and count_other_edges == 3
+
+def arrange_matrix():
+    """ Unit test for column sums """
+    adj_indices = torch.tensor([
+         [0, 0],
+         [0, 1],
+         [1, 1],
+         [4, 2],
+         [5, 0],
+         [5, 1],
+         [6, 0],
+         [7, 0],
+         [7, 1],
+         [9, 2],
+         [10, 2],
+         [11, 1],
+         [12, 0],
+         [13, 1],
+         [14, 2]
+    ], dtype=torch.long)
+    vals = torch.tensor([1, 1, 1, 2, 2, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1], dtype=torch.long)
+    adj_size = (15, 3)
+    sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=True)
+    expected_response = torch.tensor([2, 2, 1, 2, 3, 3, 1, 2, 2, 2, 1, 2, 1, 1, 1])
+    assert torch.all(torch.eq(sums, expected_response))
+
+    adj_indices = torch.tensor([
+        [0, 0],
+        [0, 1],
+        [1, 1],
+        [2, 3],
+        [1, 5],
+        [2, 4],
+        [0, 6],
+        [1, 6],
+        [1, 7],
+        [2, 10],
+        [0, 11],
+        [1, 11],
+        [0, 12],
+        [1, 13],
+        [2, 14]
+    ], dtype=torch.long)
+    vals = torch.tensor([1, 1, 1, 2, 2, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1], dtype=torch.long)
+    adj_size = (3, 15)
+    print('horizontal\n', torch.sparse.FloatTensor(adj_indices.t(), vals, torch.Size(adj_size)).to_dense())
+    sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=False)
+    print('\nsums\n', sums)
+
+    num_relations = 5
+    sums = torch.cat([sums[num_relations:2 * num_relations], sums[:num_relations], sums[2 * num_relations:]], dim=0)
+    # print(sums)
+
+    # expected_response = torch.tensor([2, 2, 1, 2, 3, 3, 1, 2, 2, 2, 1, 2, 1, 1, 1])
+    # assert torch.all(torch.eq(sums, expected_response))
