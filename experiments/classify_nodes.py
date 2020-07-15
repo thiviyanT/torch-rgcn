@@ -33,6 +33,7 @@ def train_model(dataset,
     nlayers = rgcn["num_layers"] if "num_layers" in rgcn else 2
     decomposition = rgcn["decomposition"] if "decomposition" in rgcn else None
     layer1_l2_penalty = rgcn["layer1_l2_penalty"] if "layer1_l2_penalty" in rgcn else 0.0
+    node_embedding_l2_penalty = rgcn["node_embedding_l2_penalty"] if "node_embedding_l2_penalty" in rgcn else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
 
     # Load Data
@@ -107,8 +108,8 @@ def train_model(dataset,
         classes = model()[train_idx, :]
         loss = criterion(classes, train_lbl)
 
+        # Apply l2 penalty on first layer weights
         if layer1_l2_penalty > 0.0:
-            # Apply l2 penalty on first layer weights
             if decomposition is not None and decomposition['type'] == 'basis':
                 layer1_l2 = model.rgc1.bases.pow(2).sum() + model.rgc1.comps.pow(2).sum()
             elif decomposition is not None and decomposition['type'] == 'block':
@@ -116,6 +117,14 @@ def train_model(dataset,
             else:
                 layer1_l2 = model.rgc1.weights.pow(2).sum()
             loss = loss + layer1_l2_penalty * layer1_l2
+
+        # Apply l2 penalty on node embeddings
+        if node_embedding_l2_penalty > 0.0:
+            if rgcn["model"] == 'g-rgcn' or rgcn["model"] == 'e-rgcn':
+                node_embedding_l2 = model.node_embeddings.pow(2).sum()
+                loss = loss + node_embedding_l2_penalty * node_embedding_l2
+            else:
+                raise ValueError(f"Cannot apply L2-regularisation on node embeddings for {rgcn['model']} model")
 
         t2 = time.time()
         loss.backward()
