@@ -144,12 +144,13 @@ class RelationalGraphConvolution(Module):
 
         num_triples = adj_indices.size(0)
         vals = torch.ones(num_triples, dtype=torch.float, device=self.device)
-        # Apply row-wise normalisation
+
+        # Apply normalisation (vertical-stacking -> row-wise rum & horizontal-stacking -> column-wise sum)
         sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=self.device)
-
         if not vertical_stacking:
-            sums = torch.cat([sums[num_relations:2*num_relations], sums[:num_relations], sums[2*num_relations:]], dim=0)
-
+            # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
+            n = (len(vals) - num_nodes) // 2
+            sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
         vals = vals / sums
 
         # Construct adjacency matrix
@@ -161,7 +162,6 @@ class RelationalGraphConvolution(Module):
         elif weight_decomp == 'basis':
             weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
         elif weight_decomp == 'block':
-            # TODO: Rewrite this using my own implementation
             weights = block_diag(self.blocks)
         else:
             raise NotImplementedError(f'{weight_decomp} decomposition has not been implemented')
