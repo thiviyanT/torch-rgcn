@@ -182,8 +182,7 @@ class RelationalGraphConvolution(Module):
             output = torch.einsum('rio, rni -> no', weights, af)
         else:
             # Adjacency matrix horizontally stacked
-            features = features[None, :, :].expand(self.num_relations, self.num_nodes, in_dim)
-            fw = torch.einsum('rni, rio -> rno', features, weights).contiguous()
+            fw = torch.einsum('ni, rio -> rno', features, weights).contiguous()
             output = torch.mm(adj, fw.view(self.num_relations * self.num_nodes, out_dim))
 
         assert output.size() == (self.num_nodes, out_dim)
