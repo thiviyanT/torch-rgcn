@@ -135,29 +135,26 @@ class RelationalGraphConvolution(Module):
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
         # Stack adjacency matrices (vertically/horizontally)
-        hor_indices, hor_size = stack_matrices(
+        adj_indices, adj_size = stack_matrices(
             triples,
             num_nodes,
             num_relations,
-            vertical_stacking=False
-        )
-        ver_indices, ver_size = stack_matrices(
-            triples,
-            num_nodes,
-            num_relations,
-            vertical_stacking=True
+            vertical_stacking=vertical_stacking
         )
 
-        num_triples = ver_indices.size(0)
+        num_triples = adj_indices.size(0)
         vals = torch.ones(num_triples, dtype=torch.float, device=self.device)
-        # Apply row-wise normalisation
-        vals = vals / sum_sparse(ver_indices, vals, ver_size, row_normalisation=True, device=self.device)
+
+        # Apply normalisation (vertical-stacking -> row-wise rum & horizontal-stacking -> column-wise sum)
+        sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=self.device)
+        if not vertical_stacking:
+            # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
+            n = (len(vals) - num_nodes) // 2
+            sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
+        vals = vals / sums
 
         # Construct adjacency matrix
-        if self.vertical_stacking:
-            adj = torch.sparse.FloatTensor(indices=ver_indices.t(), values=vals, size=ver_size)
-        else:
-            adj = torch.sparse.FloatTensor(indices=hor_indices.t(), values=vals, size=hor_size)
+        adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
         # Apply weight regularisation
         if weight_decomp is None:
@@ -165,7 +162,6 @@ class RelationalGraphConvolution(Module):
         elif weight_decomp == 'basis':
             weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
         elif weight_decomp == 'block':
-            # TODO: Rewrite this using my own implementation
             weights = block_diag(self.blocks)
         else:
             raise NotImplementedError(f'{weight_decomp} decomposition has not been implemented')
