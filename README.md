@@ -77,7 +77,7 @@ In The Semantic Web: Research and Applications, 2012.
  * `FB15K` from 
  Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
  *[Translating embeddings for modeling multi-relational data](http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-rela).*
- In Advances in Neural Information Processing Systems, 2013.** 
+ In Advances in Neural Information Processing Systems, 2013.
  * `FB15K-237` from 
  Kristina Toutanova and Danqi Chen.
  *[Observed versus latent features for knowledge base and text inference](https://www.aclweb.org/anthology/W15-4007.pdf).*
