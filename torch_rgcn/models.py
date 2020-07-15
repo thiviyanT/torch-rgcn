@@ -119,6 +119,7 @@ class NodeClassifier(nn.Module):
                  nclass=None,
                  edge_dropout=None,
                  decomposition=None,
+                 nemb=None,
                  device='cpu'):
         super(NodeClassifier, self).__init__()
 
@@ -245,15 +246,17 @@ class EmbeddingNodeClassifier(NodeClassifier):
                  nclass=None,
                  edge_dropout=None,
                  decomposition=None,
+                 nemb=None,
                  device='cpu'):
 
-        nfeat = nhid  # Configure RGCN to accept node embedding as feature matrix
+        assert nemb is not None, "Size of node embedding not specified!"
+        nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
 
         super(EmbeddingNodeClassifier, self)\
             .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition, device)
 
         # Node embeddings
-        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nhid))
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
 
         # Initialise Parameters
         nn.init.xavier_uniform_(self.node_embeddings)
@@ -281,15 +284,17 @@ class GlobalNodeClassifier(NodeClassifier):
                  nclass=None,
                  edge_dropout=None,
                  decomposition=None,
+                 nemb=None,
                  device='cpu'):
 
-        nfeat = nhid  #
+        assert nemb is not None, "Size of node embedding not specified!"
+        nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
 
         super(GlobalNodeClassifier, self)\
             .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition, device)
 
         # Node embeddings
-        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nhid))
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
 
         # Initialise Parameters
         nn.init.xavier_uniform_(self.node_embeddings)

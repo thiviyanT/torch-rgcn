@@ -33,6 +33,7 @@ def train_model(dataset,
     nlayers = rgcn["num_layers"] if "num_layers" in rgcn else 2
     decomposition = rgcn["decomposition"] if "decomposition" in rgcn else None
     layer1_l2_penalty = rgcn["layer1_l2_penalty"] if "layer1_l2_penalty" in rgcn else 0.0
+    nemb = rgcn["node_embeddings"] if "node_embeddings" in rgcn else 10
     node_embedding_l2_penalty = rgcn["node_embedding_l2_penalty"] if "node_embedding_l2_penalty" in rgcn else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
 
@@ -78,6 +79,7 @@ def train_model(dataset,
         nhid=nhid,
         nlayers=nlayers,
         decomposition=decomposition,
+        nemb=nemb,
         device=device)
 
     if use_cuda:
