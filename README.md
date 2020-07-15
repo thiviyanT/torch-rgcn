@@ -3,8 +3,6 @@
 Relational Graph Convolutional Network performs representation learning on multi-relational graphs, such as 
 Knowledge Graphs, by handling message propagation along different relations separately.
 
-![Relational Graph Encoding](images/diagram.png)
-
 Torch-RGCN is a PyTorch implementation of the RGCN, originally proposed by Schlichtkrull *et al.* in  
 [Modeling Relational Data with Graph Convolutional Networks](https://arxiv.org/abs/1703.06103).
  
