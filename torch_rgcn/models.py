@@ -20,8 +20,7 @@ class RelationPredictor(nn.Module):
                  nfeat=None,
                  dropout=.0,
                  encoder_config=None,
-                 decoder_config=None,
-                 device='cpu'):
+                 decoder_config=None):
         super(RelationPredictor, self).__init__()
 
         nhid = encoder_config["hidden_size"] if "hidden_size" in encoder_config else None
@@ -36,7 +35,6 @@ class RelationPredictor(nn.Module):
 
         self.num_nodes = nnodes
         self.num_rels = nrel
-        self.device = device
         self.dropout = dropout
         self.rgcn_layers = rgcn_layers
 
@@ -46,11 +44,11 @@ class RelationPredictor(nn.Module):
         if rgcn_layers == 2:
             assert nhid is not None, "Requested two layers but hidden_size not specified!"
 
-        triples = torch.tensor(triples, dtype=torch.long, device=device)
+        triples = torch.tensor(triples, dtype=torch.long)
         with torch.no_grad():
             self.register_buffer('triples', triples)
             # Add inverse relations and self-loops to triples
-            self.register_buffer('triples_plus', add_inverse_and_self(triples, nnodes, nrel, device))
+            self.register_buffer('triples_plus', add_inverse_and_self(triples, nnodes, nrel))
 
         self.rgc1 = RelationalGraphConvolution(
             triples=self.triples_plus,
@@ -60,8 +58,7 @@ class RelationPredictor(nn.Module):
             out_features=nhid,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
-            vertical_stacking=False,
-            device=device
+            vertical_stacking=False
         )
         if rgcn_layers == 2:
             self.rgc2 = RelationalGraphConvolution(
@@ -72,8 +69,7 @@ class RelationPredictor(nn.Module):
                 out_features=nemb,
                 edge_dropout=edge_dropout,
                 decomposition=decomposition,
-                vertical_stacking=True,
-                device=device
+                vertical_stacking=True
             )
 
         # Decoder
@@ -119,8 +115,7 @@ class NodeClassifier(nn.Module):
                  nclass=None,
                  edge_dropout=None,
                  decomposition=None,
-                 nemb=None,
-                 device='cpu'):
+                 nemb=None):
         super(NodeClassifier, self).__init__()
 
         self.nlayers = nlayers
@@ -135,11 +130,11 @@ class NodeClassifier(nn.Module):
         if nlayers == 2:
             assert nhid is not None, "Number of hidden layers not specified!"
 
-        triples = torch.tensor(triples, dtype=torch.long, device=device)
+        triples = torch.tensor(triples, dtype=torch.long)
         with torch.no_grad():
             self.register_buffer('triples', triples)
             # Add inverse relations and self-loops to triples
-            self.register_buffer('triples_plus', add_inverse_and_self(triples, nnodes, nrel, device))
+            self.register_buffer('triples_plus', add_inverse_and_self(triples, nnodes, nrel))
 
         self.rgc1 = RelationalGraphConvolution(
             triples=self.triples_plus,
@@ -149,8 +144,7 @@ class NodeClassifier(nn.Module):
             out_features=nhid,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
-            vertical_stacking=False,
-            device=device
+            vertical_stacking=False
         )
         if nlayers == 2:
             self.rgc2 = RelationalGraphConvolution(
@@ -161,8 +155,7 @@ class NodeClassifier(nn.Module):
                 out_features=nclass,
                 edge_dropout=edge_dropout,
                 decomposition=decomposition,
-                vertical_stacking=True,
-                device=device
+                vertical_stacking=True
             )
 
     def forward(self):
@@ -190,8 +183,7 @@ class CompressionRelationPredictor(RelationPredictor):
                  nfeat=None,
                  dropout=.0,
                  encoder_config=None,
-                 decoder_config=None,
-                 device='cpu'):
+                 decoder_config=None):
 
         # Hack: Sacred config object is immutable, so we its data!
         encoder_config = copy.deepcopy(encoder_config)
@@ -204,7 +196,7 @@ class CompressionRelationPredictor(RelationPredictor):
         encoder_config["embedding_size"] = encoder_config["hidden_size"]  # Set RGCN output dimension
 
         super(CompressionRelationPredictor, self)\
-            .__init__(triples, nnodes, nrel, nfeat, dropout, encoder_config, decoder_config, device)
+            .__init__(triples, nnodes, nrel, nfeat, dropout, encoder_config, decoder_config)
 
         # Encoder
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, embedding_size))
@@ -246,14 +238,13 @@ class EmbeddingNodeClassifier(NodeClassifier):
                  nclass=None,
                  edge_dropout=None,
                  decomposition=None,
-                 nemb=None,
-                 device='cpu'):
+                 nemb=None):
 
         assert nemb is not None, "Size of node embedding not specified!"
         nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
 
         super(EmbeddingNodeClassifier, self)\
-            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition, device)
+            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition)
 
         # Node embeddings
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
@@ -284,14 +275,13 @@ class GlobalNodeClassifier(NodeClassifier):
                  nclass=None,
                  edge_dropout=None,
                  decomposition=None,
-                 nemb=None,
-                 device='cpu'):
+                 nemb=None):
 
         assert nemb is not None, "Size of node embedding not specified!"
         nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
 
         super(GlobalNodeClassifier, self)\
-            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition, device)
+            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition)
 
         # Node embeddings
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))

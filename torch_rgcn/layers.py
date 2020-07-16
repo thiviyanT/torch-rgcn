@@ -19,8 +19,7 @@ class RelationalGraphConvolution(Module):
                  bias=True,
                  decomposition=None,
                  vertical_stacking=False,
-                 reset_mode='xavier',
-                 device='cpu'):
+                 reset_mode='xavier'):
         super(RelationalGraphConvolution, self).__init__()
 
         assert (triples is not None or num_nodes is not None or num_relations is not None or out_features is not None), \
@@ -46,7 +45,6 @@ class RelationalGraphConvolution(Module):
         self.vertical_stacking = vertical_stacking
         self.edge_dropout = edge_dropout
         self.edge_dropout_self_loop = edge_dropout_self_loop
-        self.device = device
 
         # Instantiate weights
         if self.weight_decomp is None:
@@ -134,29 +132,7 @@ class RelationalGraphConvolution(Module):
 
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
-        # Stack adjacency matrices (vertically/horizontally)
-        adj_indices, adj_size = stack_matrices(
-            triples,
-            num_nodes,
-            num_relations,
-            vertical_stacking=vertical_stacking
-        )
-
-        num_triples = adj_indices.size(0)
-        vals = torch.ones(num_triples, dtype=torch.float, device=self.device)
-
-        # Apply normalisation (vertical-stacking -> row-wise rum & horizontal-stacking -> column-wise sum)
-        sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=self.device)
-        if not vertical_stacking:
-            # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
-            n = (len(vals) - num_nodes) // 2
-            sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
-        vals = vals / sums
-
-        # Construct adjacency matrix
-        adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
-
-        # Apply weight regularisation
+        # Choose weights
         if weight_decomp is None:
             weights = self.weights
         elif weight_decomp == 'basis':
@@ -165,6 +141,38 @@ class RelationalGraphConvolution(Module):
             weights = block_diag(self.blocks)
         else:
             raise NotImplementedError(f'{weight_decomp} decomposition has not been implemented')
+
+        # Determine whether to use cuda or not
+        if weights.is_cuda:
+            device = 'cuda'
+        else:
+            device = 'cpu'
+
+        # Stack adjacency matrices (vertically/horizontally)
+        adj_indices, adj_size = stack_matrices(
+            triples,
+            num_nodes,
+            num_relations,
+            vertical_stacking=vertical_stacking,
+            device=device
+        )
+
+        num_triples = adj_indices.size(0)
+        vals = torch.ones(num_triples, dtype=torch.float, device=device)
+
+        # Apply normalisation (vertical-stacking -> row-wise rum & horizontal-stacking -> column-wise sum)
+        sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=device)
+        if not vertical_stacking:
+            # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
+            n = (len(vals) - num_nodes) // 2
+            sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
+        vals = vals / sums
+
+        # Construct adjacency matrix
+        if device == 'cuda':
+            adj = torch.cuda.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
+        else:
+            adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
         assert weights.size() == (num_relations, in_dim, out_dim)
 

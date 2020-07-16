@@ -79,8 +79,7 @@ def train_model(dataset,
         nhid=nhid,
         nlayers=nlayers,
         decomposition=decomposition,
-        nemb=nemb,
-        device=device)
+        nemb=nemb)
 
     if use_cuda:
         model.cuda()

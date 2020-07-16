@@ -78,8 +78,7 @@ def train(dataset,
         nnodes=num_nodes,
         nrel=num_relations,
         encoder_config=encoder,
-        decoder_config=decoder,
-        device=device)
+        decoder_config=decoder)
 
     if use_cuda:
         model.cuda()
