@@ -44,6 +44,33 @@ def sum_sparse(indices, values, size, row_normalisation=True, device='cpu'):
 
     return sums.view(k)
 
+
+def generate_inverses(triples, num_rels):
+    """ Generates nverse relations """
+
+    # Swap around head and tail. Create new relation ids for inverse relations.
+    inverse_relations = torch.cat([triples[:, 2, None], triples[:, 1, None] + num_rels, triples[:, 0, None]], dim=1)
+    assert inverse_relations.size() == triples.size()
+
+    return inverse_relations
+
+
+def generate_self_loops(triples, num_nodes, num_rels, self_keep_prob, device='cpu'):
+    """ Generates self-loop triples and then applies edge dropout """
+
+    # Create a new relation id for self loop relation.
+    all = torch.arange(num_nodes, device=device)[:, None]
+    id  = torch.empty(size=(num_nodes, 1), device=device, dtype=torch.long).fill_(2*num_rels)
+    self_loops = torch.cat([all, id, all], dim=1)
+    assert self_loops.size() == (num_nodes, 3)
+
+    # Apply edge dropout
+    mask = torch.bernoulli(torch.empty(size=self_loops.shape, dtype=torch.float, device=device).fill_(self_keep_prob)).to(torch.bool)
+    self_loops = self_loops[mask]
+
+    return torch.cat([triples, self_loops], dim=0)
+
+
 def add_inverse_and_self(triples, num_nodes, num_rels, device='cpu'):
     """ Adds inverse relations and self loops to a tensor of triples """
 

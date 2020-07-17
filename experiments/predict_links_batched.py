@@ -1,4 +1,4 @@
-from utils.misc import create_experiment, negative_sampling, generate_candidates, filter_triples, compute_metrics
+from utils.misc import create_experiment, negative_sampling, generate_candidates, filter_triples, compute_metrics, uniform_sampling
 from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
@@ -27,8 +27,11 @@ def train(dataset,
           _run):
 
     # Set default values
-    max_epochs = training["epochs"] if "epochs" in training else 500
+    max_epochs = training["epochs"] if "epochs" in training else 5000
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
+    graph_batch_size = training["graph_batch_size"] if "graph_batch_size" in training else None
+    neg_sample_rate = training["negative_sampling"]["sampling_rate"] if "negative_sampling" in training else None
+    head_corrupt_prob = training["negative_sampling"]["head_prob"] if "negative_sampling" in training else None
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
     filtered = evaluation["filtered"] if "filtered" in evaluation else False
@@ -65,14 +68,12 @@ def train(dataset,
     early_stop_sample = train[:eval_size]
     train = train[eval_size:]
 
-
-    if encoder["model"] == 'c-rgcn':
-        model = CompressionRelationPredictor
+    if encoder["model"] == 'rgcn':
+        model = RelationPredictor
     else:
         raise NotImplementedError(f'\'{encoder["model"]}\' encoder has not been implemented!')
 
     model = model(
-        triples=train,
         nnodes=num_nodes,
         nrel=num_relations,
         encoder_config=encoder,
@@ -109,22 +110,22 @@ def train(dataset,
 
         with torch.no_grad():
             # Generate negative samples triples for training
-            # TODO Sample nodes randomly using uniform sampling for pos_train 30K
-            pos_train = train
-            # TODO Generate negative samples 300K
-            neg_train = negative_sampling(pos_train, n2i, training["neg_sample_rate"])
-            train_idx = pos_train + neg_train
-            train_idx = torch.tensor(train_idx, dtype=torch.long, device=device)
+            positives = uniform_sampling(train, sample_size=graph_batch_size)
+            print(len(positives), neg_sample_rate, head_corrupt_prob)
+            exit()
+            # TODO Generate negative samples 300K by 50% head and 50% tail
+            negatives = negative_sampling(positives, n2i, neg_sample_rate)
+            batch_idx = torch.tensor(positives + negatives, dtype=torch.long, device=device)
 
             # Label training data (0 for positive class and 1 for negative class)
-            pos_labels = torch.ones(len(pos_train), 1, dtype=torch.float, device=device)
-            neg_labels = torch.zeros(len(neg_train), 1, dtype=torch.float, device=device)
+            pos_labels = torch.ones(len(positives), 1, dtype=torch.float, device=device)
+            neg_labels = torch.zeros(len(negatives), 1, dtype=torch.float, device=device)
             train_lbl = torch.cat([pos_labels, neg_labels], dim=0).view(-1)
 
         # TODO Drop half train_idx
 
         # Train model on training data
-        predictions = model(train_idx)  # TODO Feed the model batch and train_idx
+        predictions = model(batch_idx)  # TODO Feed the model batch and train_idx
         loss = F.binary_cross_entropy_with_logits(predictions, train_lbl)
 
         if decoder_l2_penalty > 0.0:

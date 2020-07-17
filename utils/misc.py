@@ -1,8 +1,7 @@
 from sacred import Experiment
 from sacred.observers import MongoObserver
 import numpy as np
-import random
-import torch
+from random import sample
 import os
 
 
@@ -24,6 +23,11 @@ def create_experiment(name='exp', database=None):
 #######################################################################################################################
 # Relation Prediction Utils
 #######################################################################################################################
+
+def uniform_sampling(graph, sample_size=None):
+    """ Randomly samples triples from graph """
+    assert sample_size is not None and type(sample_size) is int, "Specify graph batch size!"
+    return [i for i in sample(graph, sample_size)]
 
 def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
     """ Generates a set of negative samples by corrupting triples """

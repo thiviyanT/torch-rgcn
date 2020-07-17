@@ -1,4 +1,5 @@
 from torch_rgcn.utils import block_diag, stack_matrices, sum_sparse, drop_edges
+from torch_rgcn.utils import generate_inverses, generate_self_loops
 from torch.nn.modules.module import Module
 from torch.nn.parameter import Parameter
 from torch import nn
@@ -6,9 +7,9 @@ import math
 import torch
 
 
-class RelationalGraphConvolutionNC(Module):
+class RelationalGraphConvolution(Module):
     """
-    Relational Graph Convolution (RGC) Layer for Node Classification
+    Relational Graph Convolution (RGC) Layer
     (as described in https://arxiv.org/abs/1703.06103)
     """
     def __init__(self,
@@ -23,7 +24,7 @@ class RelationalGraphConvolutionNC(Module):
                  decomposition=None,
                  vertical_stacking=False,
                  reset_mode='xavier'):
-        super(RelationalGraphConvolutionNC, self).__init__()
+        super(RelationalGraphConvolution, self).__init__()
 
         assert (triples is not None or num_nodes is not None or num_relations is not None or out_features is not None), \
             "The following must be specified: triples, number of nodes, number of relations and output dimension!"
@@ -207,7 +208,6 @@ class RelationalGraphConvolutionRP(Module):
     """
 
     def __init__(self,
-                 triples=None,
                  num_nodes=None,
                  num_relations=None,
                  in_features=None,
@@ -220,8 +220,8 @@ class RelationalGraphConvolutionRP(Module):
                  reset_mode='xavier'):
         super(RelationalGraphConvolutionRP, self).__init__()
 
-        assert (triples is not None or num_nodes is not None or num_relations is not None or out_features is not None), \
-            "The following must be specified: triples, number of nodes, number of relations and output dimension!"
+        assert (num_nodes is not None or num_relations is not None or out_features is not None), \
+            "The following must be specified: number of nodes, number of relations and output dimension!"
 
         # If featureless, use number of nodes instead as input dimension
         in_dim = in_features if in_features is not None else num_nodes
@@ -233,7 +233,6 @@ class RelationalGraphConvolutionRP(Module):
         num_blocks = decomposition[
             'num_blocks'] if decomposition is not None and 'num_blocks' in decomposition else None
 
-        self.triples = triples
         self.num_nodes = num_nodes
         self.num_relations = num_relations
         self.in_features = in_features
@@ -304,20 +303,46 @@ class RelationalGraphConvolutionRP(Module):
         else:
             raise NotImplementedError(f'{reset_mode} parameter initialisation method has not been implemented')
 
-    def forward(self, features=None):
+    def forward(self, graph, features=None):
         """ Perform a single pass of message propagation """
 
         assert (features is None) == (self.in_features is None), \
             "Layer has not been properly configured to take in features!"
 
+        if self.weight_decomp is None:
+            weights = self.weights
+        elif self.weight_decomp == 'basis':
+            weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
+        elif self.weight_decomp == 'block':
+            weights = block_diag(self.blocks)
+        else:
+            raise NotImplementedError(f'{self.weight_decomp} decomposition has not been implemented')
+
         in_dim = self.in_features if self.in_features is not None else self.num_nodes
-        triples = self.triples
         out_dim = self.out_features
         edge_dropout = self.edge_dropout
-        weight_decomp = self.weight_decomp
         num_nodes = self.num_nodes
         num_relations = self.num_relations
         vertical_stacking = self.vertical_stacking
+        device = 'cuda' if weights.is_cuda else 'cpu'  # Note: Using cuda status of weights as proxy to decide device
+
+        # Edge dropout on self-loops
+        if self.training:
+            self_keep_prob = 1 - self.edge_dropout["self_loop"]
+        else:
+            self_keep_prob = 1
+
+        normal_triples = torch.tensor(graph, dtype=torch.long)
+        with torch.no_grad():
+            self.register_buffer('triples', normal_triples)
+            # Add inverse relations
+            inverse_triples = generate_inverses(normal_triples, self.num_relations)
+            # Add self-loops to triples
+            self_loop_triples = generate_self_loops(normal_triples, self.num_nodes, self.num_relations, self_keep_prob, device=device)
+            triples_plus = torch.cat([normal_triples, inverse_triples, self_loop_triples], dim=0)
+            self.register_buffer('triples_plus', triples_plus)
+
+        triples = self.triples
 
         # Apply edge dropout
         if edge_dropout is not None and self.training:
@@ -330,22 +355,6 @@ class RelationalGraphConvolutionRP(Module):
             self_loop_edo = edge_dropout['self_loop']
 
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
-
-        # Choose weights
-        if weight_decomp is None:
-            weights = self.weights
-        elif weight_decomp == 'basis':
-            weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
-        elif weight_decomp == 'block':
-            weights = block_diag(self.blocks)
-        else:
-            raise NotImplementedError(f'{weight_decomp} decomposition has not been implemented')
-
-        # Determine whether to use cuda or not
-        if weights.is_cuda:
-            device = 'cuda'
-        else:
-            device = 'cpu'
 
         # Stack adjacency matrices (vertically/horizontally)
         adj_indices, adj_size = stack_matrices(
