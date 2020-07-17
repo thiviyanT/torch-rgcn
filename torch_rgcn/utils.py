@@ -55,7 +55,7 @@ def generate_inverses(triples, num_rels):
     return inverse_relations
 
 
-def generate_self_loops(triples, num_nodes, num_rels, self_keep_prob, device='cpu'):
+def generate_self_loops(triples, num_nodes, num_rels, self_loop_keep_prob, device='cpu'):
     """ Generates self-loop triples and then applies edge dropout """
 
     # Create a new relation id for self loop relation.
@@ -65,8 +65,11 @@ def generate_self_loops(triples, num_nodes, num_rels, self_keep_prob, device='cp
     assert self_loops.size() == (num_nodes, 3)
 
     # Apply edge dropout
-    mask = torch.bernoulli(torch.empty(size=self_loops.shape, dtype=torch.float, device=device).fill_(self_keep_prob)).to(torch.bool)
-    self_loops = self_loops[mask]
+    print('self_loops', self_loops.shape)
+    mask = torch.bernoulli(torch.empty(size=(num_nodes,), dtype=torch.float, device=device).fill_(
+        self_loop_keep_prob)).to(torch.bool)
+    self_loops = self_loops[mask, :]
+    print('self_loops', self_loops.shape)
 
     return torch.cat([triples, self_loops], dim=0)
 
