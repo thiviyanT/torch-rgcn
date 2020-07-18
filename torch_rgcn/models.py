@@ -17,37 +17,29 @@ class RelationPredictor(nn.Module):
                  nnodes=None,
                  nrel=None,
                  nfeat=None,
-                 dropout=.0,
                  encoder_config=None,
                  decoder_config=None):
         super(RelationPredictor, self).__init__()
 
-        nhid = encoder_config["hidden_size"] if "hidden_size" in encoder_config else None
-        nemb = encoder_config["embedding_size"] if "embedding_size" in encoder_config else None
+        nhid1 = encoder_config["hidden1_size"] if "hidden1_size" in encoder_config else None
+        nhid2 = encoder_config["hidden2_size"] if "hidden2_size" in encoder_config else None
         rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
         edge_dropout = encoder_config["edge_dropout"] if "edge_dropout" in encoder_config else None
         decomposition = encoder_config["decomposition"] if "decomposition" in encoder_config else None
 
-        assert (nnodes is not None or nrel is not None or nemb is not None), \
+        assert (nnodes is not None or nrel is not None or nhid1 is not None), \
             "The following must be specified: number of nodes, number of relations and output dimension!"
-        assert 0 < rgcn_layers < 3, "Only supports the following number of RGCN layers: 1 and 2."
+        assert 0 < rgcn_layers < 3, "Only supports the following number of convolution layers: 1 and 2."
 
         self.num_nodes = nnodes
         self.num_rels = nrel
-        self.dropout = dropout
         self.rgcn_layers = rgcn_layers
-
-        if rgcn_layers == 1:
-            nhid = nemb
-
-        if rgcn_layers == 2:
-            assert nhid is not None, "Requested two layers but hidden_size not specified!"
 
         self.rgc1 = RelationalGraphConvolutionRP(
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
             in_features=nfeat,
-            out_features=nhid,
+            out_features=nhid1,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
             vertical_stacking=False
@@ -56,13 +48,14 @@ class RelationPredictor(nn.Module):
             self.rgc2 = RelationalGraphConvolutionRP(
                 num_nodes=nnodes,
                 num_relations=nrel * 2 + 1,
-                in_features=nhid,
-                out_features=nemb,
+                in_features=nhid1,
+                out_features=nhid2,
                 edge_dropout=edge_dropout,
                 decomposition=decomposition,
                 vertical_stacking=True
             )
         # Decoder
+        nemb = nhid2 if rgcn_layers == 2 else nhid1
         self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
         # Initialise Parameters
@@ -164,39 +157,31 @@ class NodeClassifier(nn.Module):
 ######################################################################################
 
 
-class CompressionRelationPredictor(RelationPredictor):
+class CompressionRelationPredictor(nn.Module):
     """ Relation prediction model with a bottleneck architecture within the encoder """
     def __init__(self,
                  triples=None,
                  nnodes=None,
                  nrel=None,
                  nfeat=None,
-                 dropout=.0,
                  encoder_config=None,
                  decoder_config=None):
         super(CompressionRelationPredictor, self).__init__()
 
-        # Hack: Sacred config object is immutable, so we its data!
-        encoder_config = copy.deepcopy(encoder_config)
-
         # Declare variables for bottleneck architecture
-        embedding_size = encoder_config["embedding_size"]
-        compression_size = encoder_config["hidden_size"]
-        # Manipulate RGCN input
-        nfeat = encoder_config["hidden_size"]  # Configure RGCN to accept compressed node embedding as feature matrix
-        encoder_config["embedding_size"] = encoder_config["hidden_size"]  # Set RGCN output dimension
-
-        nhid = encoder_config["hidden_size"] if "hidden_size" in encoder_config else None
+        nhid = encoder_config["hidden1_size"] if "hidden1_size" in encoder_config else None
         nemb = encoder_config["embedding_size"] if "embedding_size" in encoder_config else None
         rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
         edge_dropout = encoder_config["edge_dropout"] if "edge_dropout" in encoder_config else None
         decomposition = encoder_config["decomposition"] if "decomposition" in encoder_config else None
 
+        self.rgcn_layers = rgcn_layers
+
         if rgcn_layers == 1:
             nhid = nemb
 
         if rgcn_layers == 2:
-            assert nhid is not None, "Requested two layers but hidden_size not specified!"
+            assert nhid is not None, "Requested two layers but hidden1_size not specified!"
 
         triples = torch.tensor(triples, dtype=torch.long)
         with torch.no_grad():
@@ -205,13 +190,13 @@ class CompressionRelationPredictor(RelationPredictor):
             self.register_buffer('triples_plus', add_inverse_and_self(triples, nnodes, nrel))
 
         # Encoder
-        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, embedding_size))
-        self.encoding_layer = torch.nn.Linear(embedding_size, compression_size)
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
+        self.encoding_layer = torch.nn.Linear(nemb, nhid)
         self.rgc1 = RelationalGraphConvolution(
             triples=self.triples_plus,
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
-            in_features=nfeat,
+            in_features=nemb,
             out_features=nhid,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
@@ -223,14 +208,14 @@ class CompressionRelationPredictor(RelationPredictor):
                 num_nodes=nnodes,
                 num_relations=nrel * 2 + 1,
                 in_features=nhid,
-                out_features=nemb,
+                out_features=nhid,
                 edge_dropout=edge_dropout,
                 decomposition=decomposition,
                 vertical_stacking=True
             )
-        self.decoding_layer = torch.nn.Linear(compression_size, embedding_size)
+        self.decoding_layer = torch.nn.Linear(nhid, nemb)
         # Decoder
-        self.relations = nn.Parameter(torch.FloatTensor(nrel, embedding_size))
+        self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
         # Initialise Parameters
         nn.init.xavier_uniform_(self.node_embeddings)

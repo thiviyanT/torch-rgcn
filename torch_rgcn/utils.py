@@ -65,11 +65,9 @@ def generate_self_loops(triples, num_nodes, num_rels, self_loop_keep_prob, devic
     assert self_loops.size() == (num_nodes, 3)
 
     # Apply edge dropout
-    print('self_loops', self_loops.shape)
     mask = torch.bernoulli(torch.empty(size=(num_nodes,), dtype=torch.float, device=device).fill_(
         self_loop_keep_prob)).to(torch.bool)
     self_loops = self_loops[mask, :]
-    print('self_loops', self_loops.shape)
 
     return torch.cat([triples, self_loops], dim=0)
 

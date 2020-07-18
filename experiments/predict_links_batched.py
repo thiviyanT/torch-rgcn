@@ -1,4 +1,4 @@
-from utils.misc import create_experiment, negative_sampling, generate_candidates, filter_triples, compute_metrics, uniform_sampling
+from utils.misc import *
 from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
@@ -32,6 +32,7 @@ def train(dataset,
     graph_batch_size = training["graph_batch_size"] if "graph_batch_size" in training else None
     neg_sample_rate = training["negative_sampling"]["sampling_rate"] if "negative_sampling" in training else None
     head_corrupt_prob = training["negative_sampling"]["head_prob"] if "negative_sampling" in training else None
+    edge_dropout = encoder["edge_dropout"]["general"] if "edge_dropout" in encoder else 0.0
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
     filtered = evaluation["filtered"] if "filtered" in evaluation else False
@@ -77,7 +78,8 @@ def train(dataset,
         nnodes=num_nodes,
         nrel=num_relations,
         encoder_config=encoder,
-        decoder_config=decoder)
+        decoder_config=decoder
+    )
 
     if use_cuda:
         model.cuda()
@@ -111,25 +113,30 @@ def train(dataset,
         with torch.no_grad():
             # Generate negative samples triples for training
             positives = uniform_sampling(train, sample_size=graph_batch_size)
-            print(len(positives), neg_sample_rate, head_corrupt_prob)
-            exit()
-            # TODO Generate negative samples 300K by 50% head and 50% tail
-            negatives = negative_sampling(positives, n2i, neg_sample_rate)
-            batch_idx = torch.tensor(positives + negatives, dtype=torch.long, device=device)
+            positives = torch.tensor(positives, dtype=torch.long, device=device)
+            negatives = positives.clone()[:, None, :].expand(graph_batch_size, neg_sample_rate, 3).contiguous()
+            negatives = corrupt(negatives, num_nodes, head_corrupt_prob)
+            batch_idx = torch.cat([positives, negatives], dim=0)
 
             # Label training data (0 for positive class and 1 for negative class)
-            pos_labels = torch.ones(len(positives), 1, dtype=torch.float, device=device)
-            neg_labels = torch.zeros(len(negatives), 1, dtype=torch.float, device=device)
+            pos_labels = torch.ones(graph_batch_size, 1, dtype=torch.float, device=device)
+            neg_labels = torch.zeros(graph_batch_size*neg_sample_rate, 1, dtype=torch.float, device=device)
             train_lbl = torch.cat([pos_labels, neg_labels], dim=0).view(-1)
 
-        # TODO Drop half train_idx
+        graph = positives
+        # Apply edge dropout on all edges
+        if model.training and edge_dropout > 0.0:
+            keep_prob = 1 - edge_dropout
+            mask = torch.bernoulli(torch.empty(size=(graph_batch_size,), dtype=torch.float, device=device).fill_(
+                keep_prob)).to(torch.bool)
+            graph = graph[mask, :]
 
         # Train model on training data
-        predictions = model(batch_idx)  # TODO Feed the model batch and train_idx
+        predictions = model(graph, batch_idx)
         loss = F.binary_cross_entropy_with_logits(predictions, train_lbl)
 
+        # Apply l2 penalty on decoder (i.e. relations parameter)
         if decoder_l2_penalty > 0.0:
-            # Apply l2 penalty on decoder (i.e. relations parameter)
             decoder_l2 = model.relations.pow(2).sum()
             loss = loss + decoder_l2_penalty * decoder_l2
 
@@ -143,20 +150,25 @@ def train(dataset,
             print("Starting evaluation...")
             with torch.no_grad():
 
-                # TODO Transfer mode to CPU
+                if use_cuda:
+                    model.cpu()
 
                 model.eval()
                 mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
+                graph = torch.tensor(train, dtype=torch.long, device=device)
+
                 for s, p, o in tqdm.tqdm(early_stop_sample):
                     s, p, o = s, p, o
                     correct_triple = (s, p, o)
-                    candidates = generate_candidates(s, p, n2i)
+                    c_heads = corrupt_heads(n2i, p, o)
+                    c_tails = corrupt_tails(s, p, n2i)
+                    batch = c_heads + c_tails
                     if filtered:
-                        candidates = filter_triples(candidates, all_triples, correct_triple)
-                    candidates = torch.tensor(candidates, dtype=torch.long, device=device)
-                    scores = model(candidates)
-                    mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
+                        batch = filter_triples(batch, all_triples, correct_triple)
+                    batch = torch.tensor(batch, dtype=torch.long, device=device)
+                    scores = model(graph, batch)
+                    mrr, hits_at_k = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
                     mrr_scores.append(mrr)
                     hits_at_1.append(hits_at_k[1])
                     hits_at_3.append(hits_at_k[3])
@@ -166,6 +178,9 @@ def train(dataset,
                 hits_at_1 = np.mean(np.array(hits_at_1))
                 hits_at_3 = np.mean(np.array(hits_at_3))
                 hits_at_10 = np.mean(np.array(hits_at_10))
+
+            if use_cuda:
+                model.cuda()
 
             _run.log_scalar("training.loss", loss.item(), step=epoch)
             _run.log_scalar("test.mrr", mrr, step=epoch)
@@ -187,7 +202,7 @@ def train(dataset,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimiser.state_dict(),
                     'loss': loss
-                }, f'./{encoder["model"]}.model')
+                }, f'./{encoder["model"]}_{dataset["name"]}.model')
                 num_no_improvements = 0
                 best_mrr = mrr
             else:
@@ -197,8 +212,6 @@ def train(dataset,
                 break
             else:
                 continue
-
-            # TODO Transfer model back GPU
         else:
             _run.log_scalar("training.loss", loss.item(), step=epoch)
             print(f'[Epoch {epoch}] Loss: {loss.item():.5f} Forward: {(t2 - t1):.3f}s Backward: {(t3 - t2):.3f}s ')
@@ -217,16 +230,20 @@ def train(dataset,
             num_test_triples = test.shape[0]
             test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
 
+        graph = torch.tensor(train, dtype=torch.long, device=device)
+
         # Final evaluation is carried out on the entire dataset
         for s, p, o in tqdm.tqdm(test_sample):
             s, p, o = s.item(), p.item(), o.item()
             correct_triple = (s, p, o)
-            candidates = generate_candidates(s, p, n2i)
+            c_heads = corrupt_heads(n2i, p, o)
+            c_tails = corrupt_tails(s, p, n2i)
+            batch = c_heads + c_tails
             if filtered:
-                candidates = filter_triples(candidates, all_triples, correct_triple)
-            candidates = torch.tensor(candidates, dtype=torch.long, device=device)
-            scores = model(candidates)
-            mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
+                batch = filter_triples(batch, all_triples, correct_triple)
+            batch = torch.tensor(batch, dtype=torch.long, device=device)
+            scores = model(graph, batch)
+            mrr, hits_at_k = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
             mrr_scores.append(mrr)
             hits_at_1.append(hits_at_k[1])
             hits_at_3.append(hits_at_k[3])

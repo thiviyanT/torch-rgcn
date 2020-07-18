@@ -168,7 +168,7 @@ class RelationalGraphConvolution(Module):
         sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=device)
         if not vertical_stacking:
             # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
-            n = (len(vals) - num_nodes) // 2
+            n = (len(vals) - num_triples) // 2
             sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
         vals = vals / sums
 
@@ -303,7 +303,7 @@ class RelationalGraphConvolutionRP(Module):
         else:
             raise NotImplementedError(f'{reset_mode} parameter initialisation method has not been implemented')
 
-    def forward(self, graph, features=None):
+    def forward(self, triples, features=None):
         """ Perform a single pass of message propagation """
 
         assert (features is None) == (self.in_features is None), \
@@ -332,29 +332,17 @@ class RelationalGraphConvolutionRP(Module):
         else:
             self_keep_prob = 1
 
-        normal_triples = torch.tensor(graph, dtype=torch.long)
         with torch.no_grad():
-            self.register_buffer('triples', normal_triples)
+            self.register_buffer('triples', triples)
             # Add inverse relations
-            inverse_triples = generate_inverses(normal_triples, self.num_relations)
+            inverse_triples = generate_inverses(triples, self.num_relations)
             # Add self-loops to triples
-            self_loop_triples = generate_self_loops(normal_triples, self.num_nodes, self.num_relations, self_keep_prob, device=device)
-            triples_plus = torch.cat([normal_triples, inverse_triples, self_loop_triples], dim=0)
+            self_loop_triples = generate_self_loops(
+                triples, self.num_nodes, self.num_relations, self_keep_prob, device=device)
+            triples_plus = torch.cat([triples, inverse_triples, self_loop_triples], dim=0)
             self.register_buffer('triples_plus', triples_plus)
 
         triples = self.triples
-
-        # Apply edge dropout
-        if edge_dropout is not None and self.training:
-            assert 'general' in edge_dropout and 'self_loop' in edge_dropout, \
-                'General and self-loop edge dropouts must be specified!'
-            assert type(edge_dropout['general']) is float and 0.0 <= edge_dropout['general'] <= 1.0, \
-                "Edge dropout rates must between 0.0 and 1.0!"
-
-            general_edo = edge_dropout['general']
-            self_loop_edo = edge_dropout['self_loop']
-
-            triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
         # Stack adjacency matrices (vertically/horizontally)
         adj_indices, adj_size = stack_matrices(
@@ -372,7 +360,7 @@ class RelationalGraphConvolutionRP(Module):
         sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=device)
         if not vertical_stacking:
             # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
-            n = (len(vals) - num_nodes) // 2
+            n = (len(vals) - num_triples) // 2
             sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
         vals = vals / sums
 

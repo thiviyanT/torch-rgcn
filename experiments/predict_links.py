@@ -1,4 +1,4 @@
-from utils.misc import create_experiment, negative_sampling, generate_candidates, filter_triples, compute_metrics
+from utils.misc import create_experiment, negative_sampling, corrupt_tails, filter_triples, compute_metrics
 from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
@@ -29,6 +29,7 @@ def train(dataset,
     # Set default values
     max_epochs = training["epochs"] if "epochs" in training else 500
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
+    node_embedding_l2_penalty = encoder["node_embedding_l2_penalty"] if "node_embedding_l2_penalty" in encoder else 0.0
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
     filtered = evaluation["filtered"] if "filtered" in evaluation else False
@@ -76,7 +77,8 @@ def train(dataset,
         nnodes=num_nodes,
         nrel=num_relations,
         encoder_config=encoder,
-        decoder_config=decoder)
+        decoder_config=decoder
+    )
 
     if use_cuda:
         model.cuda()
@@ -109,9 +111,7 @@ def train(dataset,
 
         with torch.no_grad():
             # Generate negative samples triples for training
-            # TODO Sample nodes randomly using uniform sampling for pos_train 30K
             pos_train = train
-            # TODO Generate negative samples 300K
             neg_train = negative_sampling(pos_train, n2i, training["neg_sample_rate"])
             train_idx = pos_train + neg_train
             train_idx = torch.tensor(train_idx, dtype=torch.long, device=device)
@@ -121,16 +121,22 @@ def train(dataset,
             neg_labels = torch.zeros(len(neg_train), 1, dtype=torch.float, device=device)
             train_lbl = torch.cat([pos_labels, neg_labels], dim=0).view(-1)
 
-        # TODO Drop half train_idx
-
         # Train model on training data
-        predictions = model(train_idx)  # TODO Feed the model batch and train_idx
+        predictions = model(train_idx)
         loss = F.binary_cross_entropy_with_logits(predictions, train_lbl)
 
+        # Apply l2 penalty on decoder (i.e. relations parameter)
         if decoder_l2_penalty > 0.0:
-            # Apply l2 penalty on decoder (i.e. relations parameter)
             decoder_l2 = model.relations.pow(2).sum()
             loss = loss + decoder_l2_penalty * decoder_l2
+
+        # Apply l2 penalty on node embeddings
+        if node_embedding_l2_penalty > 0.0:
+            if encoder["model"] == 'c-rgcn':
+                node_embedding_l2 = model.node_embeddings.pow(2).sum()
+                loss = loss + node_embedding_l2_penalty * node_embedding_l2
+            else:
+                raise ValueError(f"Cannot apply L2-regularisation on node embeddings for {encoder['model']} model")
 
         t2 = time.time()
         loss.backward()
@@ -141,16 +147,13 @@ def train(dataset,
         if epoch % eval_every == 0:
             print("Starting evaluation...")
             with torch.no_grad():
-
-                # TODO Transfer mode to CPU
-
                 model.eval()
                 mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
                 for s, p, o in tqdm.tqdm(early_stop_sample):
                     s, p, o = s, p, o
                     correct_triple = (s, p, o)
-                    candidates = generate_candidates(s, p, n2i)
+                    candidates = corrupt_tails(s, p, n2i)
                     if filtered:
                         candidates = filter_triples(candidates, all_triples, correct_triple)
                     candidates = torch.tensor(candidates, dtype=torch.long, device=device)
@@ -196,8 +199,6 @@ def train(dataset,
                 break
             else:
                 continue
-
-            # TODO Transfer model back GPU
         else:
             _run.log_scalar("training.loss", loss.item(), step=epoch)
             print(f'[Epoch {epoch}] Loss: {loss.item():.5f} Forward: {(t2 - t1):.3f}s Backward: {(t3 - t2):.3f}s ')
@@ -220,7 +221,7 @@ def train(dataset,
         for s, p, o in tqdm.tqdm(test_sample):
             s, p, o = s.item(), p.item(), o.item()
             correct_triple = (s, p, o)
-            candidates = generate_candidates(s, p, n2i)
+            candidates = corrupt_tails(s, p, n2i)
             if filtered:
                 candidates = filter_triples(candidates, all_triples, correct_triple)
             candidates = torch.tensor(candidates, dtype=torch.long, device=device)

@@ -2,6 +2,7 @@ from sacred import Experiment
 from sacred.observers import MongoObserver
 import numpy as np
 from random import sample
+import torch
 import os
 
 
@@ -29,6 +30,25 @@ def uniform_sampling(graph, sample_size=None):
     assert sample_size is not None and type(sample_size) is int, "Specify graph batch size!"
     return [i for i in sample(graph, sample_size)]
 
+def corrupt(batch, num_nodes, head_corrupt_prob, device='cpu'):
+    """
+    Corrupts the negatives of a batch of triples.
+    Randomly corrupts either heads or tails
+    """
+    bs, ns, _ = batch.size()
+
+    # new entities to insert
+    corruptions = torch.randint(size=(bs * ns,),low=0, high=num_nodes, dtype=torch.long, device=device)
+
+    # boolean mask for entries to corrupt
+    mask = torch.bernoulli(torch.empty(size=(bs, ns, 1), dtype=torch.float, device=device).fill_(head_corrupt_prob)).to(torch.bool)
+    zeros = torch.zeros(size=(bs, ns, 1), dtype=torch.bool, device=device)
+    mask = torch.cat([mask, zeros, ~mask], dim=2)
+
+    batch[mask] = corruptions
+
+    return batch.view(bs * ns, -1)
+
 def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
     """ Generates a set of negative samples by corrupting triples """
 
@@ -40,8 +60,11 @@ def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
 
     return negative_triples.tolist()
 
+def corrupt_heads(entity_dictionary, p, o):
+    """ Generate a list of candidate triples by replacing the head with every entity for each test triplet """
+    return [(s, p, o) for s in range(len(entity_dictionary))]
 
-def generate_candidates(s, p, entity_dictionary):
+def corrupt_tails(s, p, entity_dictionary):
     """ Generate a list of candidate triples by replacing the tail with every entity for each test triplet """
     return [(s, p, o) for o in range(len(entity_dictionary))]
 
