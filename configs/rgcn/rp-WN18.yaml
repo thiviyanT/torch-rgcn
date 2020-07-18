@@ -2,24 +2,27 @@ dataset:
   name: WN18
 
 training:
-  epochs: 10000  # Limit the number of training epochs
-  neg_sample_rate: 10  # Number of negative samples to produce per triple (Paper report 1 and Michael's code is 10)
+  epochs: 8000  # Limit the number of training epochs
+  graph_batch_size: 30000  # Number of triples to randomly sample during training
+  negative_sampling:
+    sampling_rate: 10  # Number of negative samples to produce per triple
+    head_prob: 0.5  # Probability of corrupting heads (i.e. 0.5 means corrupt 50% heads and 50% tails)
   optimiser:
     algorithm: adam
     weight_decay: 0.0
     learn_rate: 0.01
-  use_cuda: False  # If true, model is trained on GPU
+  use_cuda: True  # If true, model is trained on GPU
 
 encoder:
   model: rgcn
-  num_layers: 1  # Number of layers in RGCN
-  embedding_size: 200  # Size of RGCN node embedding
+  num_layers: 1  # Number of graph convolution layers
+  hidden1_size: 200  # Size of first hidden layer
   decomposition:
     type: basis
     num_bases: 2
   edge_dropout:
-    general: 0.2
-    self_loop: 0.4
+    general: 0.5  # Dropout rate for all edges (except self-loops)
+    self_loop: 0.2  # Dropout rate for self-loops
 
 decoder:
   model: distmult
@@ -29,9 +32,9 @@ evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
   filtered: True  # If true, reports filtered metrics. Otherwise, raw metrics are computed.
   early_stopping:
-    check_every: 1000  # Evaluate model performance at every n epoch interval
+    check_every: 500  # Evaluate model performance at every n epoch interval
     metric: mrr
-    min_epochs: 100  # Minimum of epochs before early stopping can be applied
+    min_epochs: 1000  # Minimum of epochs before early stopping can be applied
     num_stops: 1  # If no improvement in metric is detected after n times, apply early stopping
-#    eval_size: 200  # Number of triples to randomly sample from training dataset (Default=100)
+    eval_size: 500  # Number of triples to randomly sample from training dataset
 #  final_eval_size: 10000  # Limit the number of triples to randomly sample from test dataset
