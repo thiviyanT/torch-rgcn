@@ -25,10 +25,9 @@ def create_experiment(name='exp', database=None):
 # Relation Prediction Utils
 #######################################################################################################################
 
-def uniform_sampling(graph, sample_size=None):
+def uniform_sampling(graph, sample_size=30000):
     """ Randomly samples triples from graph """
-    assert sample_size is not None and type(sample_size) is int, "Specify graph batch size!"
-    return [i for i in sample(graph, sample_size)]
+    return sample(graph, sample_size)
 
 def corrupt(batch, num_nodes, head_corrupt_prob, device='cpu'):
     """
