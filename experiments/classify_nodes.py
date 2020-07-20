@@ -99,6 +99,9 @@ def train_model(dataset,
         weight_decay=training["optimiser"]["weight_decay"]
     )
 
+    # pytorch_total_params = sum(p.numel() for p in model.parameters())
+    # print('Total number of parameters:', pytorch_total_params)
+
     print("Starting training...")
     for epoch in range(1, epochs+1):
         t1 = time.time()
