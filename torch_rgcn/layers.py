@@ -168,7 +168,7 @@ class RelationalGraphConvolution(Module):
         sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=device)
         if not vertical_stacking:
             # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
-            n = (len(vals) - num_triples) // 2
+            n = (len(vals) - num_nodes) // 2
             sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
         vals = vals / sums
 
@@ -320,33 +320,29 @@ class RelationalGraphConvolutionRP(Module):
 
         in_dim = self.in_features if self.in_features is not None else self.num_nodes
         out_dim = self.out_features
-        edge_dropout = self.edge_dropout
         num_nodes = self.num_nodes
         num_relations = self.num_relations
         vertical_stacking = self.vertical_stacking
+        original_num_relations = int((self.num_relations-1)/2)  # Count without inverse and self-relations
         device = 'cuda' if weights.is_cuda else 'cpu'  # Note: Using cuda status of weights as proxy to decide device
 
         # Edge dropout on self-loops
         if self.training:
-            self_keep_prob = 1 - self.edge_dropout["self_loop"]
+            self_loop_keep_prob = 1 - self.edge_dropout["self_loop"]
         else:
-            self_keep_prob = 1
+            self_loop_keep_prob = 1
 
         with torch.no_grad():
-            self.register_buffer('triples', triples)
             # Add inverse relations
-            inverse_triples = generate_inverses(triples, self.num_relations)
+            inverse_triples = generate_inverses(triples, original_num_relations)
             # Add self-loops to triples
             self_loop_triples = generate_self_loops(
-                triples, self.num_nodes, self.num_relations, self_keep_prob, device=device)
+                triples, num_nodes, original_num_relations, self_loop_keep_prob, device=device)
             triples_plus = torch.cat([triples, inverse_triples, self_loop_triples], dim=0)
-            self.register_buffer('triples_plus', triples_plus)
-
-        triples = self.triples
 
         # Stack adjacency matrices (vertically/horizontally)
         adj_indices, adj_size = stack_matrices(
-            triples,
+            triples_plus,
             num_nodes,
             num_relations,
             vertical_stacking=vertical_stacking,
@@ -356,12 +352,15 @@ class RelationalGraphConvolutionRP(Module):
         num_triples = adj_indices.size(0)
         vals = torch.ones(num_triples, dtype=torch.float, device=device)
 
+        assert vals.size(0) == (triples.size(0) + inverse_triples.size(0) + self_loop_triples.size(0))
+
         # Apply normalisation (vertical-stacking -> row-wise rum & horizontal-stacking -> column-wise sum)
         sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=device)
         if not vertical_stacking:
             # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
-            n = (len(vals) - num_triples) // 2
-            sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
+            n = triples.size(0)
+            i = self_loop_triples.size(0)
+            sums = torch.cat([sums[n : 2*n], sums[:n], sums[-i:]], dim=0)
         vals = vals / sums
 
         # Construct adjacency matrix
