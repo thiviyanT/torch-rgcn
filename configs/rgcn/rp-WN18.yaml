@@ -2,7 +2,7 @@ dataset:
   name: WN18
 
 training:
-  epochs: 8000  # Limit the number of training epochs
+  epochs: 10000  # Limit the number of training epochs
   graph_batch_size: 30000  # Number of triples to randomly sample during training
   negative_sampling:
     sampling_rate: 10  # Number of negative samples to produce per triple

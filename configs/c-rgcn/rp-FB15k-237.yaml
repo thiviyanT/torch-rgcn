@@ -12,10 +12,10 @@ training:
 
 encoder:
   model: c-rgcn
-  node_embedding_l2_penalty: 0.0  # l2 penalty on node embeddings
+  node_embedding_l2_penalty: 0.005  # l2 penalty on node embeddings
   num_layers: 2  # Number of graph convolution layers
-  embedding_size: 256  # Size for node and relation embedding
-  hidden1_size: 16  # Size of first hidden layer - Dimension to compress node embeddings to (ideally much smaller than embedding_size)
+  embedding_size: 128  # Size for node and relation embedding
+  hidden1_size: 10  # Size of first hidden layer - Dimension to compress node embeddings to (ideally much smaller than embedding_size)
   edge_dropout:
     general: 0.5  # Dropout rate for all edges (except self-loops)
     self_loop: 0.2  # Dropout rate for self-loops

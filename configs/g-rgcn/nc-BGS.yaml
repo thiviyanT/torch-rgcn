@@ -22,4 +22,4 @@ rgcn:
     num_bases: 40
 
 evaluation:
-  final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
+  final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
