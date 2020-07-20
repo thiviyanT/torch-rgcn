@@ -177,12 +177,6 @@ class CompressionRelationPredictor(nn.Module):
 
         self.rgcn_layers = rgcn_layers
 
-        if rgcn_layers == 1:
-            nhid = nemb
-
-        if rgcn_layers == 2:
-            assert nhid is not None, "Requested two layers but hidden1_size not specified!"
-
         triples = torch.tensor(triples, dtype=torch.long)
         with torch.no_grad():
             self.register_buffer('triples', triples)
@@ -196,7 +190,7 @@ class CompressionRelationPredictor(nn.Module):
             triples=self.triples_plus,
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
-            in_features=nemb,
+            in_features=nhid,
             out_features=nhid,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
@@ -236,9 +230,11 @@ class CompressionRelationPredictor(nn.Module):
     def forward(self, triples):
         """ Embed relational graph and then compute class probabilities """
 
-        nodes = self.encoding_layer(self.node_embeddings)
+        x = self.node_embeddings
 
-        x = self.rgc1(features=nodes)
+        x = self.encoding_layer(x)
+
+        x = self.rgc1(features=x)
 
         if self.rgcn_layers == 2:
             x = F.relu(x)
