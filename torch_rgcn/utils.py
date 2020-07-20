@@ -113,9 +113,9 @@ def stack_matrices(triples, num_nodes, num_rels, vertical_stacking=True, device=
 
     return indices, size
 
-def block_diag(m, device='cpu'):
+def block_diag(m):
     """
-    courtesy of: https://gist.github.com/yulkang/2e4fc3061b45403f455d7f4c316ab168
+    Source: https://gist.github.com/yulkang/2e4fc3061b45403f455d7f4c316ab168
     Make a block diagonal matrix along dim=-3
     EXAMPLE:
     block_diag(torch.ones(4,3,2))
@@ -123,6 +123,8 @@ def block_diag(m, device='cpu'):
     Prepend batch dimensions if needed.
     You can also give a list of matrices.
     """
+
+    device = 'cuda' if m.is_cuda else 'cpu'  # Note: Using cuda status of m as proxy to decide device
 
     if type(m) is list:
         m = torch.cat([m1.unsqueeze(-3) for m1 in m], -3)
