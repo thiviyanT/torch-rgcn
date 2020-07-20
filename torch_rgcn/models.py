@@ -35,10 +35,11 @@ class RelationPredictor(nn.Module):
         self.num_rels = nrel
         self.rgcn_layers = rgcn_layers
 
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nhid1))
         self.rgc1 = RelationalGraphConvolutionRP(
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
-            in_features=nfeat,
+            in_features=nhid1,
             out_features=nhid1,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
@@ -59,6 +60,7 @@ class RelationPredictor(nn.Module):
         self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
         # Initialise Parameters
+        nn.init.xavier_uniform_(self.node_embeddings)
         nn.init.xavier_uniform_(self.relations)
 
     def distmult_score(self, triples, nodes, relations):
@@ -76,7 +78,9 @@ class RelationPredictor(nn.Module):
     def forward(self, graph, batch):
         """ Embed relational graph and then compute score """
 
-        x = self.rgc1(graph)
+        x = self.node_embeddings
+
+        x = self.rgc1(graph, features=x)
 
         if self.rgcn_layers == 2:
             x = F.relu(x)
