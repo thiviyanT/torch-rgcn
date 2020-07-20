@@ -36,7 +36,7 @@ def train(dataset,
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
     filtered = evaluation["filtered"] if "filtered" in evaluation else False
-    eval_size = evaluation["early_stopping"]["eval_size"] if "eval_size" in evaluation["early_stopping"] else 100
+    eval_size = evaluation["early_stopping"]["eval_size"] if "eval_size" in evaluation["early_stopping"] else None
     eval_every = evaluation["early_stopping"]["check_every"] if "check_every" in evaluation["early_stopping"] else 100
     early_stop_metric = evaluation["early_stopping"]["metric"] if "metric" in evaluation["early_stopping"] else 'mrr'
     num_stops = evaluation["early_stopping"]["num_stops"] if "num_stops" in evaluation["early_stopping"] else 2
@@ -62,12 +62,7 @@ def train(dataset,
 
     num_nodes = len(n2i)
     num_relations = len(r2i)
-    test = torch.tensor(test, dtype=torch.long, device=device)
-
-    # Split off a portion of training data for early stopping
-    random.shuffle(train)
-    early_stop_sample = train[:eval_size]
-    train = train[eval_size:]
+    test = torch.tensor(test, dtype=torch.long, device=torch.device('cpu'))  # Note: Evaluation is performed on the CPU
 
     if encoder["model"] == 'rgcn':
         model = RelationPredictor
@@ -103,6 +98,9 @@ def train(dataset,
     num_no_improvements = 0
     epoch_counter = 0
 
+    # pytorch_total_params = sum(p.numel() for p in model.parameters())
+    # print('Total number of parameters:', pytorch_total_params)
+
     print("Start training...")
     for epoch in range(1, max_epochs+1):
         epoch_counter += 1
@@ -115,7 +113,7 @@ def train(dataset,
             positives = uniform_sampling(train, sample_size=graph_batch_size)
             positives = torch.tensor(positives, dtype=torch.long, device=device)
             negatives = positives.clone()[:, None, :].expand(graph_batch_size, neg_sample_rate, 3).contiguous()
-            negatives = corrupt(negatives, num_nodes, head_corrupt_prob)
+            negatives = corrupt(negatives, num_nodes, head_corrupt_prob, device=device)
             batch_idx = torch.cat([positives, negatives], dim=0)
 
             # Label training data (0 for positive class and 1 for negative class)
@@ -145,20 +143,27 @@ def train(dataset,
         optimiser.step()
         t3 = time.time()
 
-        # Evaluate
+        # Evaluate on validation set
         if epoch % eval_every == 0:
             print("Starting evaluation...")
             with torch.no_grad():
 
+                # Note: Evaluation is performed on the CPU due to memory requirements
                 if use_cuda:
                     model.cpu()
 
                 model.eval()
                 mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
-                graph = torch.tensor(train, dtype=torch.long, device=device)
+                graph = torch.tensor(train, dtype=torch.long)
 
-                for s, p, o in tqdm.tqdm(early_stop_sample):
+                if eval_size is None:
+                    test_sample = test
+                else:
+                    num_test_triples = test.shape[0]
+                    test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
+
+                for s, p, o in tqdm.tqdm(test_sample):
                     s, p, o = s, p, o
                     correct_triple = (s, p, o)
                     c_heads = corrupt_heads(n2i, p, o)
@@ -166,7 +171,7 @@ def train(dataset,
                     batch = c_heads + c_tails
                     if filtered:
                         batch = filter_triples(batch, all_triples, correct_triple)
-                    batch = torch.tensor(batch, dtype=torch.long, device=device)
+                    batch = torch.tensor(batch, dtype=torch.long)
                     scores = model(graph, batch)
                     mrr, hits_at_k = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
                     mrr_scores.append(mrr)
@@ -222,15 +227,19 @@ def train(dataset,
     mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
     with torch.no_grad():
+        # Note: Evaluation is performed on the CPU due to memory requirements
+        if use_cuda:
+            model.cpu()
+
         model.eval()
 
         if final_eval_size is None or final_run:
             test_sample = test
         else:
             num_test_triples = test.shape[0]
-            test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
+            test_sample = test[random.sample(range(num_test_triples), k=final_eval_size)]
 
-        graph = torch.tensor(train, dtype=torch.long, device=device)
+        graph = torch.tensor(train, dtype=torch.long)
 
         # Final evaluation is carried out on the entire dataset
         for s, p, o in tqdm.tqdm(test_sample):
@@ -241,7 +250,7 @@ def train(dataset,
             batch = c_heads + c_tails
             if filtered:
                 batch = filter_triples(batch, all_triples, correct_triple)
-            batch = torch.tensor(batch, dtype=torch.long, device=device)
+            batch = torch.tensor(batch, dtype=torch.long)
             scores = model(graph, batch)
             mrr, hits_at_k = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
             mrr_scores.append(mrr)
