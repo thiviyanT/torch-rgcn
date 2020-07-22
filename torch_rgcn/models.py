@@ -21,6 +21,7 @@ class RelationPredictor(nn.Module):
                  decoder_config=None):
         super(RelationPredictor, self).__init__()
 
+        nemb = encoder_config["node_embedding"] if "node_embedding" in encoder_config else None
         nhid1 = encoder_config["hidden1_size"] if "hidden1_size" in encoder_config else None
         nhid2 = encoder_config["hidden2_size"] if "hidden2_size" in encoder_config else None
         rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
@@ -34,12 +35,17 @@ class RelationPredictor(nn.Module):
         self.num_nodes = nnodes
         self.num_rels = nrel
         self.rgcn_layers = rgcn_layers
+        self.nemb = nemb
 
-        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nhid1))
+        if nemb is not None:
+            self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
+            nn.init.xavier_uniform_(self.node_embeddings)
+            nfeat = self.nemb
+
         self.rgc1 = RelationalGraphConvolutionRP(
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
-            in_features=nhid1,
+            in_features=nfeat,
             out_features=nhid1,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
@@ -55,12 +61,9 @@ class RelationPredictor(nn.Module):
                 decomposition=decomposition,
                 vertical_stacking=True
             )
-        # Decoder
-        nemb = nhid2 if rgcn_layers == 2 else nhid1
-        self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
-        # Initialise Parameters
-        nn.init.xavier_uniform_(self.node_embeddings)
+        # Decoder
+        self.relations = nn.Parameter(torch.FloatTensor(nrel, nhid2 if rgcn_layers == 2 else nhid1))
         nn.init.xavier_uniform_(self.relations)
 
     def distmult_score(self, triples, nodes, relations):
@@ -78,9 +81,11 @@ class RelationPredictor(nn.Module):
     def forward(self, graph, batch):
         """ Embed relational graph and then compute score """
 
-        x = self.node_embeddings
-
-        x = self.rgc1(graph, features=x)
+        if self.nemb is not None:
+            x = self.node_embeddings
+            x = self.rgc1(graph, features=x)
+        else:
+            x = self.rgc1(graph)
 
         if self.rgcn_layers == 2:
             x = F.relu(x)
