@@ -11,11 +11,13 @@ training:
     algorithm: adam
     weight_decay: 0.0
     learn_rate: 0.01
+  gradient_clip_value: 1.0  # Clip value for Gradient Clipping
   use_cuda: True  # If true, model is trained on GPU
 
 encoder:
   model: rgcn
   num_layers: 1  # Number of graph convolution layers
+  node_embedding: 200  # Size of node embedding
   hidden1_size: 200  # Size of first hidden layer
   decomposition:
     type: basis
