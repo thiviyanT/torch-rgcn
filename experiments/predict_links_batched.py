@@ -2,6 +2,7 @@ from utils.misc import *
 from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
+from torch.nn.utils import clip_grad_value_
 import numpy as np
 import random
 import torch
@@ -31,6 +32,7 @@ def train(dataset,
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
     graph_batch_size = training["graph_batch_size"] if "graph_batch_size" in training else None
     neg_sample_rate = training["negative_sampling"]["sampling_rate"] if "negative_sampling" in training else None
+    clip_value = training["gradient_clip_value"] if "gradient_clip_value" in training else None
     head_corrupt_prob = training["negative_sampling"]["head_prob"] if "negative_sampling" in training else None
     edge_dropout = encoder["edge_dropout"]["general"] if "edge_dropout" in encoder else 0.0
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
@@ -137,6 +139,10 @@ def train(dataset,
         if decoder_l2_penalty > 0.0:
             decoder_l2 = model.relations.pow(2).sum()
             loss = loss + decoder_l2_penalty * decoder_l2
+
+        # Apply gradient clipping
+        if clip_value is not None:
+            clip_grad_value_(model.parameters(), clip_value)
 
         t2 = time.time()
         loss.backward()
