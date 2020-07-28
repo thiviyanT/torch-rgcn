@@ -167,7 +167,7 @@ class NodeClassifier(nn.Module):
 
 
 class CompressionRelationPredictor(nn.Module):
-    """ Relation prediction model with a bottleneck architecture within the encoder """
+    """ Relation prediction model with a bottleneck architecture within the encoder and DistMult decoder """
     def __init__(self,
                  triples=None,
                  nnodes=None,
@@ -177,26 +177,21 @@ class CompressionRelationPredictor(nn.Module):
                  decoder_config=None):
         super(CompressionRelationPredictor, self).__init__()
 
-        # Declare variables for bottleneck architecture
+        # Declare variables
         nhid = encoder_config["hidden1_size"] if "hidden1_size" in encoder_config else None
         nemb = encoder_config["embedding_size"] if "embedding_size" in encoder_config else None
         rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
         edge_dropout = encoder_config["edge_dropout"] if "edge_dropout" in encoder_config else None
         decomposition = encoder_config["decomposition"] if "decomposition" in encoder_config else None
-
+        rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
         self.rgcn_layers = rgcn_layers
 
-        triples = torch.tensor(triples, dtype=torch.long)
-        with torch.no_grad():
-            self.register_buffer('triples', triples)
-            # Add inverse relations and self-loops to triples
-            self.register_buffer('triples_plus', add_inverse_and_self(triples, nnodes, nrel))
+        assert 0 < rgcn_layers < 3, "Only supports the following number of convolution layers: 1 and 2."
 
         # Encoder
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
         self.encoding_layer = torch.nn.Linear(nemb, nhid)
-        self.rgc1 = RelationalGraphConvolution(
-            triples=self.triples_plus,
+        self.rgc1 = RelationalGraphConvolutionRP(
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
             in_features=nhid,
@@ -206,8 +201,7 @@ class CompressionRelationPredictor(nn.Module):
             vertical_stacking=False
         )
         if rgcn_layers == 2:
-            self.rgc2 = RelationalGraphConvolution(
-                triples=self.triples_plus,
+            self.rgc2 = RelationalGraphConvolutionRP(
                 num_nodes=nnodes,
                 num_relations=nrel * 2 + 1,
                 in_features=nhid,
@@ -236,22 +230,22 @@ class CompressionRelationPredictor(nn.Module):
 
         return scores.view(-1)
 
-    def forward(self, triples):
+    def forward(self, graph, all_triples):
         """ Embed relational graph and then compute class probabilities """
 
         x = self.node_embeddings
 
         x = self.encoding_layer(x)
 
-        x = self.rgc1(features=x)
+        x = self.rgc1(graph, features=x)
 
         if self.rgcn_layers == 2:
             x = F.relu(x)
-            x = self.rgc2(features=x)
+            x = self.rgc2(graph, features=x)
 
         x = self.node_embeddings + self.decoding_layer(x)
 
-        scores = self.distmult_score(triples, x, self.relations)
+        scores = self.distmult_score(all_triples, x, self.relations)
         return scores
 
 

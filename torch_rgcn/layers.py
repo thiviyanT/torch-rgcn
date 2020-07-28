@@ -9,7 +9,7 @@ import torch
 
 class RelationalGraphConvolution(Module):
     """
-    Relational Graph Convolution (RGC) Layer
+    Relational Graph Convolution (RGC) Layer for Node Classification
     (as described in https://arxiv.org/abs/1703.06103)
     """
     def __init__(self,
@@ -122,18 +122,17 @@ class RelationalGraphConvolution(Module):
         num_nodes = self.num_nodes
         num_relations = self.num_relations
         vertical_stacking = self.vertical_stacking
+        general_edge_count = int((triples.size(0) - num_nodes)/2)
+        self_edge_count = num_nodes
 
-        # Apply edge dropout
+        # Apply edge dropout TODO Remove edge dropout from here - Not correct to apply dropout here
         if edge_dropout is not None and self.training:
-
             assert 'general' in edge_dropout and 'self_loop' in edge_dropout, \
                 'General and self-loop edge dropouts must be specified!'
             assert type(edge_dropout['general']) is float and 0.0 <= edge_dropout['general'] <= 1.0, \
                 "Edge dropout rates must between 0.0 and 1.0!"
-
             general_edo = edge_dropout['general']
             self_loop_edo = edge_dropout['self_loop']
-
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
         # Choose weights
@@ -168,8 +167,10 @@ class RelationalGraphConvolution(Module):
         sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=device)
         if not vertical_stacking:
             # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
-            n = (len(vals) - num_nodes) // 2
-            sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
+            n = general_edge_count
+            i = self_edge_count
+            sums = torch.cat([sums[n:2 * n], sums[:n], sums[-i:]], dim=0)
+
         vals = vals / sums
 
         # Construct adjacency matrix

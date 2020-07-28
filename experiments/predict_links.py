@@ -30,6 +30,7 @@ def train(dataset,
     max_epochs = training["epochs"] if "epochs" in training else 500
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
     node_embedding_l2_penalty = encoder["node_embedding_l2_penalty"] if "node_embedding_l2_penalty" in encoder else 0.0
+    edge_dropout = encoder["edge_dropout"]["general"] if "edge_dropout" in encoder else 0.0
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
     filtered = evaluation["filtered"] if "filtered" in evaluation else False
@@ -118,8 +119,16 @@ def train(dataset,
             neg_labels = torch.zeros(len(neg_train), 1, dtype=torch.float, device=device)
             train_lbl = torch.cat([pos_labels, neg_labels], dim=0).view(-1)
 
+        graph = torch.tensor(train, dtype=torch.long, device=device)
+        # Apply edge dropout on all edges
+        if model.training and edge_dropout > 0.0:
+            keep_prob = 1 - edge_dropout
+            mask = torch.bernoulli(torch.empty(size=(graph.size(0),), dtype=torch.float, device=device).fill_(
+                keep_prob)).to(torch.bool)
+            graph = graph[mask, :]
+
         # Train model on training data
-        predictions = model(train_idx)
+        predictions = model(graph, train_idx)
         loss = F.binary_cross_entropy_with_logits(predictions, train_lbl)
 
         # Apply l2 penalty on decoder (i.e. relations parameter)
@@ -147,6 +156,8 @@ def train(dataset,
                 model.eval()
                 mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
+                graph = torch.tensor(train, dtype=torch.long, device=device)
+
                 if eval_size is None:
                     test_sample = test
                 else:
@@ -160,7 +171,7 @@ def train(dataset,
                     if filtered:
                         candidates = filter_triples(candidates, all_triples, correct_triple)
                     candidates = torch.tensor(candidates, dtype=torch.long, device=device)
-                    scores = model(candidates)
+                    scores = model(graph, candidates)
                     mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
                     mrr_scores.append(mrr)
                     hits_at_1.append(hits_at_k[1])
@@ -210,6 +221,9 @@ def train(dataset,
 
     print("Starting final evaluation...")
     mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
+
+    graph = torch.tensor(train, dtype=torch.long, device=device)
+
     with torch.no_grad():
         model.eval()
 
@@ -227,7 +241,7 @@ def train(dataset,
             if filtered:
                 candidates = filter_triples(candidates, all_triples, correct_triple)
             candidates = torch.tensor(candidates, dtype=torch.long, device=device)
-            scores = model(candidates)
+            scores = model(graph, candidates)
             mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
             mrr_scores.append(mrr)
             hits_at_1.append(hits_at_k[1])
