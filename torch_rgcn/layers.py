@@ -19,6 +19,7 @@ class RelationalGraphConvolution(Module):
                  bias=True,
                  decomposition=None,
                  vertical_stacking=False,
+                 no_hidden=False,
                  reset_mode='xavier'):
         super(RelationalGraphConvolution, self).__init__()
 
@@ -43,11 +44,24 @@ class RelationalGraphConvolution(Module):
         self.num_bases = num_bases
         self.num_blocks = num_blocks
         self.vertical_stacking = vertical_stacking
+        self.no_hidden = no_hidden
         self.edge_dropout = edge_dropout
         self.edge_dropout_self_loop = edge_dropout_self_loop
 
+        # If this flag is active, no hidden layer (with adaptive parameters) is instantiated, only identity matrices
+        # which function as a stacking mechanism for the feature matrix
+        if self.no_hidden:
+            identity_matrix = torch.eye(self.in_features)
+            identity_matrix = identity_matrix.reshape((1, self.in_features, self.in_features))
+
+            self.weights = nn.Parameter(identity_matrix.repeat(self.num_relations, 1, 1), requires_grad=False)
+
+            self.out_features = self.in_features
+            self.weight_decomp = None
+            bias = False
+
         # Instantiate weights
-        if self.weight_decomp is None:
+        elif self.weight_decomp is None:
             self.weights = Parameter(torch.FloatTensor(num_relations, in_dim, out_dim))
         elif self.weight_decomp == 'basis':
             # Weight Regularisation through Basis Decomposition
@@ -78,7 +92,10 @@ class RelationalGraphConvolution(Module):
     def reset_parameters(self, reset_mode='xavier'):
         """ Initialise biases and weights (xavier or uniform) """
 
-        if reset_mode == 'xavier':
+        # If the weights in this layer are to be fixed, no initialization process is activated
+        if self.no_hidden is True:
+            pass
+        elif reset_mode == 'xavier':
             if self.weight_decomp == 'block':
                 nn.init.xavier_uniform_(self.blocks, gain=nn.init.calculate_gain('relu'))
             elif self.weight_decomp == 'basis':
