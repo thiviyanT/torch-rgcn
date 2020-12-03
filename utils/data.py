@@ -207,6 +207,10 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
         train_file = locate_file('data/fB15k-237/train.txt')
         val_file = locate_file('data/fB15k-237/valid.txt')
         test_file = locate_file('data/fB15k-237/test.txt')
+    elif name.lower() == 'fb-toy':
+        train_file = locate_file('data/fb-toy/train.txt')
+        val_file = locate_file('data/fb-toy/valid.txt')
+        test_file = locate_file('data/fb-toy/test.txt')
     elif name.lower() == 'wn18':
         train_file = locate_file('data/wn18/train.txt')
         val_file = locate_file('data/wn18/valid.txt')

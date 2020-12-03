@@ -1,6 +1,47 @@
-from math import floor
+from math import floor, sqrt
 import random
 import torch
+
+
+def schlichtkrull_variance(tensor, gain):
+    """
+    The resulting tensor will have values sampled from
+    a = \text{gain} \times \frac{3}{\sqrt{\text{fan\_in} + \text{fan\_out}}}
+    """
+    fan_in, fan_out = tensor.shape[0], tensor.shape[1]
+    std = gain * 3.0 / sqrt(float(fan_in + fan_out))
+    print('variance', std)
+    return std
+
+def schlichtkrull_normal_(tensor, gain=1.):
+    """Fill the input `Tensor` with values according to the Schlichtkrull method, using a normal distribution."""
+    std = schlichtkrull_variance(tensor, gain)
+    with torch.no_grad():
+        return tensor.normal_(0.0, std)
+
+def schlichtkrull_uniform_(tensor, gain=1.):
+    """Fill the input `Tensor` with values according to the Schlichtkrull method, using a uniform distribution."""
+    std = schlichtkrull_variance(tensor, gain)
+    with torch.no_grad():
+        return tensor.uniform_(-std, std)
+
+def select_init(init):
+    """Return initialisation method"""
+    init = init.lower()
+    if init in ['glorot-uniform', 'xavier-uniform']:
+        return torch.nn.init.xavier_uniform_
+    elif init in ['glorot-normal', 'xavier-normal']:
+        return torch.nn.init.xavier_normal_
+    elif init == 'schlichtkrull-uniform':
+        return schlichtkrull_uniform_
+    elif init == 'schlichtkrull-normal':
+        return schlichtkrull_normal_
+    elif init == 'normal':
+        return torch.nn.init.normal_
+    elif init == 'uniform':
+        return torch.nn.init.uniform_
+    else:
+        raise NotImplementedError(f'{init} initialisation has not been implemented!')
 
 def drop_edges(triples, num_nodes, general_edo, self_loop_edo):
     """ Performs edge dropout by actually removing the triples """

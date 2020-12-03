@@ -1,5 +1,4 @@
-from torch_rgcn.utils import block_diag, stack_matrices, sum_sparse, drop_edges
-from torch_rgcn.utils import generate_inverses, generate_self_loops
+from torch_rgcn.utils import *
 from torch.nn.modules.module import Module
 from torch.nn.parameter import Parameter
 from torch import nn
@@ -23,7 +22,7 @@ class RelationalGraphConvolution(Module):
                  bias=True,
                  decomposition=None,
                  vertical_stacking=False,
-                 reset_mode='xavier'):
+                 reset_mode='glorot_uniform'):
         super(RelationalGraphConvolution, self).__init__()
 
         assert (triples is not None or num_nodes is not None or num_relations is not None or out_features is not None), \
@@ -79,10 +78,23 @@ class RelationalGraphConvolution(Module):
             
         self.reset_parameters(reset_mode)
     
-    def reset_parameters(self, reset_mode='xavier'):
-        """ Initialise biases and weights (xavier or uniform) """
+    def reset_parameters(self, reset_mode='glorot_uniform'):
+        """ Initialise biases and weights (glorot_uniform or uniform) """
 
-        if reset_mode == 'xavier':
+        if reset_mode == 'glorot_uniform':
+            if self.weight_decomp == 'block':
+                nn.init.xavier_uniform_(self.blocks, gain=nn.init.calculate_gain('relu'))
+            elif self.weight_decomp == 'basis':
+                nn.init.xavier_uniform_(self.bases, gain=nn.init.calculate_gain('relu'))
+                nn.init.xavier_uniform_(self.comps, gain=nn.init.calculate_gain('relu'))
+            else:
+                nn.init.xavier_uniform_(self.weights, gain=nn.init.calculate_gain('relu'))
+
+            if self.bias is not None:
+                torch.nn.init.zeros_(self.bias)
+        elif reset_mode == 'schlichtkrull':
+            # Schlichtkrull initilisation implemented as described in https://github.com/MichSchli/RelationPrediction/blob/c77b094fe5c17685ed138dae9ae49b304e0d8d89/code/common/shared_functions.py#L12
+
             if self.weight_decomp == 'block':
                 nn.init.xavier_uniform_(self.blocks, gain=nn.init.calculate_gain('relu'))
             elif self.weight_decomp == 'basis':
@@ -215,10 +227,10 @@ class RelationalGraphConvolutionRP(Module):
                  out_features=None,
                  edge_dropout=None,
                  edge_dropout_self_loop=None,
-                 bias=True,
                  decomposition=None,
                  vertical_stacking=False,
-                 reset_mode='xavier'):
+                 w_init='glorot-normal',
+                 b_init=None):
         super(RelationalGraphConvolutionRP, self).__init__()
 
         assert (num_nodes is not None or num_relations is not None or out_features is not None), \
@@ -244,8 +256,10 @@ class RelationalGraphConvolutionRP(Module):
         self.vertical_stacking = vertical_stacking
         self.edge_dropout = edge_dropout
         self.edge_dropout_self_loop = edge_dropout_self_loop
+        self.w_init = w_init
+        self.b_init = b_init
 
-        # Instantiate weights
+        # Create weight parameters
         if self.weight_decomp is None:
             self.weights = Parameter(torch.FloatTensor(num_relations, in_dim, out_dim))
         elif self.weight_decomp == 'basis':
@@ -267,42 +281,71 @@ class RelationalGraphConvolutionRP(Module):
         else:
             raise NotImplementedError(f'{self.weight_decomp} decomposition has not been implemented')
 
-        # Instantiate biases
-        if bias:
+        # Create bias parameters
+        if b_init:
             self.bias = Parameter(torch.FloatTensor(out_features))
         else:
             self.register_parameter('bias', None)
 
-        self.reset_parameters(reset_mode)
+        self.initialise_weights()
+        if self.bias is not None:
+            self.initialise_biases()
 
-    def reset_parameters(self, reset_mode='xavier'):
-        """ Initialise biases and weights (xavier or uniform) """
+    def initialise_biases(self):
+        """
+        Initialise bias parameters using one of the following methods:
+            ones - setting all values to one
+            zeros - setting all values to zero
+            normal - using a standard normal distribution
+            uniform - using a uniform distribution
+        """
 
-        if reset_mode == 'xavier':
-            if self.weight_decomp == 'block':
-                nn.init.xavier_uniform_(self.blocks, gain=nn.init.calculate_gain('relu'))
-            elif self.weight_decomp == 'basis':
-                nn.init.xavier_uniform_(self.bases, gain=nn.init.calculate_gain('relu'))
-                nn.init.xavier_uniform_(self.comps, gain=nn.init.calculate_gain('relu'))
-            else:
-                nn.init.xavier_uniform_(self.weights, gain=nn.init.calculate_gain('relu'))
+        b_init = self.b_init
+        b_init = b_init.lower()
 
-            if self.bias is not None:
-                torch.nn.init.zeros_(self.bias)
-        elif reset_mode == 'uniform':
-            stdv = 1.0 / math.sqrt(self.weights.size(1))
-            if self.weight_decomp == 'block':
-                self.blocks.data.uniform_(-stdv, stdv)
-            elif self.weight_decomp == 'basis':
-                self.bases.data.uniform_(-stdv, stdv)
-                self.comps.data.uniform_(-stdv, stdv)
-            else:
-                self.weights.data.uniform_(-stdv, stdv)
-
-            if self.bias is not None:
-                self.bias.data.uniform_(-stdv, stdv)
+        if b_init in ['zeros', 'zero', 0]:
+            nn.init.zeros_(self.bias)
+        elif b_init in ['ones', 'one', 1]:
+            nn.init.ones_(self.bias)
+        elif b_init == 'uniform':
+            nn.init.uniform_(self.bias)
+        elif b_init == 'normal':
+            nn.init.normal_(self.bias)
         else:
-            raise NotImplementedError(f'{reset_mode} parameter initialisation method has not been implemented')
+            raise NotImplementedError(f'{b_init} initialisation has not been implemented!')
+
+    def initialise_weights(self, gain=None):
+        """
+        Initialise weights parameters using one of the following methods:
+            glorot-uniform - xavier initialisation using a uniform distribution
+            glorot-normal - xavier initialisation using a normal distribution
+            schlichtkrull-uniform - schlichtkrull initialisation using a uniform distribution
+            schlichtkrull-normal - schlichtkrull initialisation using a normal distribution
+            normal - using a standard normal distribution
+            uniform - using a uniform distribution
+        """
+
+        w_init = self.w_init
+        w_init = w_init.lower()
+        print(w_init)
+
+        # TODO: Is gain even necessary?
+        if gain is None:
+            gain = 1.0
+        else:
+            gain = nn.init.calculate_gain('relu')
+
+        init = select_init(w_init)
+
+        if self.weight_decomp == 'block':
+            init(self.blocks, gain=gain)
+            print('initializer', self.blocks.shape, torch.mean(self.blocks), torch.std(self.blocks))
+        elif self.weight_decomp == 'basis':
+            init(self.bases, gain=gain)
+            init(self.comps, gain=gain)
+        else:
+            init(self.weights, gain=gain)
+
 
     def forward(self, triples, features=None):
         """ Perform a single pass of message propagation """

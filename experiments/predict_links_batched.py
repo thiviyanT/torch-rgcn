@@ -1,10 +1,8 @@
 from utils.misc import *
-from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
+from torch_rgcn.models import RelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
-from torch.nn.utils import clip_grad_value_
 import numpy as np
-import random
 import torch
 import time
 import tqdm
@@ -31,19 +29,14 @@ def train(dataset,
     max_epochs = training["epochs"] if "epochs" in training else 5000
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
     graph_batch_size = training["graph_batch_size"] if "graph_batch_size" in training else None
+    sampling_method = training["sampling_method"] if "sampling_method" in training else 'uniform'
     neg_sample_rate = training["negative_sampling"]["sampling_rate"] if "negative_sampling" in training else None
-    clip_value = training["gradient_clip_value"] if "gradient_clip_value" in training else None
     head_corrupt_prob = training["negative_sampling"]["head_prob"] if "negative_sampling" in training else None
     edge_dropout = encoder["edge_dropout"]["general"] if "edge_dropout" in encoder else 0.0
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
     filtered = evaluation["filtered"] if "filtered" in evaluation else False
-    eval_size = evaluation["early_stopping"]["eval_size"] if "eval_size" in evaluation["early_stopping"] else None
-    eval_every = evaluation["early_stopping"]["check_every"] if "check_every" in evaluation["early_stopping"] else 100
-    early_stop_metric = evaluation["early_stopping"]["metric"] if "metric" in evaluation["early_stopping"] else 'mrr'
-    num_stops = evaluation["early_stopping"]["num_stops"] if "num_stops" in evaluation["early_stopping"] else 2
-    min_epochs = evaluation["early_stopping"]["min_epochs"] if "min_epochs" in evaluation["early_stopping"] else 1000
-    final_eval_size = evaluation["final_eval_size"] if "final_eval_size" in evaluation else None
+    eval_every = evaluation["check_every"] if "check_every" in evaluation else 2000
 
     # Note: Validation dataset will be used as test if this is not a test run
     (n2i, i2n), (r2i, i2r), train, test, all_triples = load_link_prediction_data(dataset["name"], use_test_set=final_run)
@@ -96,8 +89,8 @@ def train(dataset,
         weight_decay=training["optimiser"]["weight_decay"]
     )
 
-    best_mrr = 0
-    num_no_improvements = 0
+    sampling_function = select_sampling(sampling_method)
+
     epoch_counter = 0
 
     # pytorch_total_params = sum(p.numel() for p in model.parameters())
@@ -111,9 +104,10 @@ def train(dataset,
         model.train()
 
         with torch.no_grad():
-            # Generate negative samples triples for training
-            positives = uniform_sampling(train, sample_size=graph_batch_size)
+            # Sample triples randomly
+            positives = sampling_function(train, sample_size=graph_batch_size, entities=n2i)
             positives = torch.tensor(positives, dtype=torch.long, device=device)
+            # Generate negative samples triples for training
             negatives = positives.clone()[:, None, :].expand(graph_batch_size, neg_sample_rate, 3).contiguous()
             negatives = corrupt(negatives, num_nodes, head_corrupt_prob, device=device)
             batch_idx = torch.cat([positives, negatives], dim=0)
@@ -140,10 +134,6 @@ def train(dataset,
             decoder_l2 = model.relations.pow(2).sum()
             loss = loss + decoder_l2_penalty * decoder_l2
 
-        # Apply gradient clipping
-        if clip_value is not None:
-            clip_grad_value_(model.parameters(), clip_value)
-
         t2 = time.time()
         loss.backward()
         optimiser.step()
@@ -163,13 +153,7 @@ def train(dataset,
 
                 graph = torch.tensor(train, dtype=torch.long)
 
-                if eval_size is None:
-                    test_sample = test
-                else:
-                    num_test_triples = test.shape[0]
-                    test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
-
-                for s, p, o in tqdm.tqdm(test_sample):
+                for s, p, o in tqdm.tqdm(test):
                     s, p, o = s, p, o
                     correct_triple = (s, p, o)
                     c_heads = corrupt_heads(n2i, p, o)
@@ -206,23 +190,6 @@ def train(dataset,
                   f'Hits@3({filtered}): {hits_at_3:.3f} \t'
                   f'Hits@10({filtered}): {hits_at_10:.3f}')
 
-            # Early stopping
-            if mrr > best_mrr:
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimiser.state_dict(),
-                    'loss': loss
-                }, f'./{encoder["model"]}_{dataset["name"]}.model')
-                num_no_improvements = 0
-                best_mrr = mrr
-            else:
-                num_no_improvements += 1
-            if epoch > min_epochs and num_stops == num_no_improvements or epoch > max_epochs:
-                print('Early Stopping!')
-                break
-            else:
-                continue
         else:
             _run.log_scalar("training.loss", loss.item(), step=epoch)
             print(f'[Epoch {epoch}] Loss: {loss.item():.5f} Forward: {(t2 - t1):.3f}s Backward: {(t3 - t2):.3f}s ')
@@ -239,16 +206,10 @@ def train(dataset,
 
         model.eval()
 
-        if final_eval_size is None or final_run:
-            test_sample = test
-        else:
-            num_test_triples = test.shape[0]
-            test_sample = test[random.sample(range(num_test_triples), k=final_eval_size)]
-
         graph = torch.tensor(train, dtype=torch.long)
 
         # Final evaluation is carried out on the entire dataset
-        for s, p, o in tqdm.tqdm(test_sample):
+        for s, p, o in tqdm.tqdm(test):
             s, p, o = s.item(), p.item(), o.item()
             correct_triple = (s, p, o)
             c_heads = corrupt_heads(n2i, p, o)

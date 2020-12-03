@@ -1,17 +1,18 @@
 dataset:
-  name: FB15k-237
+  name: FB-toy
 
 training:
-  epochs: 10000  # Limit the number of training epochs
-  graph_batch_size: 30000  # Number of triples to randomly sample during training
+  epochs: 10000  # Maximum number of training epochs
+  graph_batch_size: 30000  # Number of positive triples to sample during training
+  sampling_method: edge-neighborhood  # Sampling method for randomly selecting positive triples
   negative_sampling:
-    sampling_rate: 10  # Number of negative samples to produce per triple
-    head_prob: 0.5  # Probability of corrupting heads (i.e. 0.5 means corrupt 50% heads and 50% tails)head_prob: 0.5  # Ratio of corrupting heads (i.e. 0.5 means corrupt 50% heads and 50% tails)
+    sampling_rate: 10  # Number of negative samples to produce per positive triple
+    head_prob: 0.5  # Ratio of corrupting heads (i.e. 0.5 means corrupt 50% heads and 50% tails)
   optimiser:
     algorithm: adam
     weight_decay: 0.0
     learn_rate: 0.01
-  use_cuda: False  # If true, model is trained on GPU
+  use_cuda: False  # If true, model is trained on available GPUs.
 
 encoder:
   model: rgcn
@@ -25,12 +26,16 @@ encoder:
   edge_dropout:
     general: 0.5  # Dropout rate for all edges (except self-loops)
     self_loop: 0.2  # Dropout rate for self-loops
+  weight_init: schlichtkrull-normal  # Weight Initialisation
+  bias_init: zeros  # Bias Initialisation
 
 decoder:
   model: distmult
   l2_penalty: 0.01
+  weight_init: normal
+  bias_init: zero
 
 evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
   filtered: True  # If true, reports filtered metrics. Otherwise, raw metrics are computed.
-  check_every: 2000  # Evaluate relation prediction model at regular intervals (by default, every 2000 epochs)
+  check_every: 2000  # Evaluate model at regular intervals (By default, every 2000 epochs)
