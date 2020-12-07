@@ -1,5 +1,5 @@
-from torch_rgcn.layers import RelationalGraphConvolution, RelationalGraphConvolutionRP
-from torch_rgcn.utils import add_inverse_and_self, select_init
+from torch_rgcn.layers import RelationalGraphConvolution, RelationalGraphConvolutionRP, DistMult
+from torch_rgcn.utils import add_inverse_and_self, select_w_init
 import torch.nn.functional as F
 from torch import nn
 import torch
@@ -20,6 +20,7 @@ class RelationPredictor(nn.Module):
                  decoder_config=None):
         super(RelationPredictor, self).__init__()
 
+        # Encoder config
         nemb = encoder_config["node_embedding"] if "node_embedding" in encoder_config else None
         nhid1 = encoder_config["hidden1_size"] if "hidden1_size" in encoder_config else None
         nhid2 = encoder_config["hidden2_size"] if "hidden2_size" in encoder_config else None
@@ -27,9 +28,13 @@ class RelationPredictor(nn.Module):
         edge_dropout = encoder_config["edge_dropout"] if "edge_dropout" in encoder_config else None
         decomposition = encoder_config["decomposition"] if "decomposition" in encoder_config else None
         encoder_w_init = encoder_config["weight_init"] if "weight_init" in encoder_config else None
+        encoder_gain = encoder_config["include_gain"] if "include_gain" in encoder_config else False
         encoder_b_init = encoder_config["bias_init"] if "bias_init" in encoder_config else None
-        decoder_w_init = encoder_config["weight_init"] if "weight_init" in encoder_config else None
-        decoder_b_init = encoder_config["bias_init"] if "bias_init" in encoder_config else None
+
+        # Decoder config
+        decoder_w_init = decoder_config["weight_init"] if "weight_init" in decoder_config else None
+        decoder_gain = decoder_config["include_gain"] if "include_gain" in decoder_config else False
+        decoder_b_init = decoder_config["bias_init"] if "bias_init" in decoder_config else None
 
         assert (nnodes is not None or nrel is not None or nhid1 is not None), \
             "The following must be specified: number of nodes, number of relations and output dimension!"
@@ -42,7 +47,7 @@ class RelationPredictor(nn.Module):
 
         if nemb is not None:
             self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
-            init = select_init(encoder_w_init)
+            init = select_w_init(encoder_w_init)
             init(self.node_embeddings)
             nfeat = self.nemb
 
@@ -55,6 +60,7 @@ class RelationPredictor(nn.Module):
             decomposition=decomposition,
             vertical_stacking=False,
             w_init=encoder_w_init,
+            w_gain=encoder_gain,
             b_init=encoder_b_init
         )
         if rgcn_layers == 2:
@@ -67,25 +73,13 @@ class RelationPredictor(nn.Module):
                 decomposition=decomposition,
                 vertical_stacking=True,
                 w_init=encoder_w_init,
+                w_gain=encoder_gain,
                 b_init=encoder_b_init
             )
 
         # Decoder
-        self.relations = nn.Parameter(torch.FloatTensor(nrel, nhid2 if rgcn_layers == 2 else nhid1))
-        init = select_init(decoder_w_init)
-        init(self.relations)
-
-    def distmult_score(self, triples, nodes, relations):
-        """ Simple DistMult scoring function (from https://arxiv.org/pdf/1412.6575.pdf) """
-
-        s = triples[:, 0]
-        p = triples[:, 1]
-        o = triples[:, 2]
-        s, p, o = nodes[s, :], relations[p, :], nodes[o, :]
-
-        scores = (s * p * o).sum(dim=1)
-
-        return scores.view(-1)
+        out_feat = nhid2 if rgcn_layers == 2 else nhid1
+        self.scoring_function = DistMult(nrel, out_feat, nnodes, nrel, decoder_w_init, decoder_gain, decoder_b_init)
 
     def forward(self, graph, batch):
         """ Embed relational graph and then compute score """
@@ -100,7 +94,7 @@ class RelationPredictor(nn.Module):
             x = F.relu(x)
             x = self.rgc2(graph, features=x)
 
-        scores = self.distmult_score(batch, x, self.relations)
+        scores = self.scoring_function(batch, x)
         return scores
 
 
@@ -186,7 +180,7 @@ class CompressionRelationPredictor(nn.Module):
                  decoder_config=None):
         super(CompressionRelationPredictor, self).__init__()
 
-        # Declare variables
+        # Encoder config
         nhid = encoder_config["hidden1_size"] if "hidden1_size" in encoder_config else None
         nemb = encoder_config["embedding_size"] if "embedding_size" in encoder_config else None
         rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
@@ -196,8 +190,10 @@ class CompressionRelationPredictor(nn.Module):
         self.rgcn_layers = rgcn_layers
         encoder_w_init = encoder_config["weight_init"] if "weight_init" in encoder_config else None
         encoder_b_init = encoder_config["bias_init"] if "bias_init" in encoder_config else None
-        decoder_w_init = encoder_config["weight_init"] if "weight_init" in encoder_config else None
-        decoder_b_init = encoder_config["bias_init"] if "bias_init" in encoder_config else None
+
+        # Decoder config
+        decoder_w_init = decoder_config["weight_init"] if "weight_init" in decoder_config else None
+        decoder_b_init = decoder_config["bias_init"] if "bias_init" in decoder_config else None
 
         assert 0 < rgcn_layers < 3, "Only supports the following number of convolution layers: 1 and 2."
 
@@ -232,9 +228,9 @@ class CompressionRelationPredictor(nn.Module):
         self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
         # Initialise Parameters
-        init = select_init(encoder_w_init)
+        init = select_w_init(encoder_w_init)
         init(self.node_embeddings)
-        init = select_init(decoder_w_init)
+        init = select_w_init(decoder_w_init)
         init(self.node_embeddings)
 
     def distmult_score(self, triples, nodes, relations):
@@ -292,7 +288,7 @@ class EmbeddingNodeClassifier(NodeClassifier):
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
 
         # Initialise Parameters
-        init = select_init('glorot-uniform')
+        init = select_w_init('glorot-uniform')
         init(self.node_embeddings)
 
     def forward(self):
@@ -330,7 +326,7 @@ class GlobalNodeClassifier(NodeClassifier):
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
 
         # Initialise Parameters
-        init = select_init('glorot-uniform')
+        init = select_w_init('glorot-uniform')
         init(self.node_embeddings)
 
     def forward(self):

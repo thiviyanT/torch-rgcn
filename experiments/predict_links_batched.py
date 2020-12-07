@@ -131,7 +131,7 @@ def train(dataset,
 
         # Apply l2 penalty on decoder (i.e. relations parameter)
         if decoder_l2_penalty > 0.0:
-            decoder_l2 = model.relations.pow(2).sum()
+            decoder_l2 = model.scoring_function.relations.pow(2).sum()
             loss = loss + decoder_l2_penalty * decoder_l2
 
         t2 = time.time()

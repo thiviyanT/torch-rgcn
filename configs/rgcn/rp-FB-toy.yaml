@@ -3,8 +3,8 @@ dataset:
 
 training:
   epochs: 10000  # Maximum number of training epochs
-  graph_batch_size: 30000  # Number of positive triples to sample during training
-  sampling_method: edge-neighborhood  # Sampling method for randomly selecting positive triples
+  graph_batch_size: 300  # Number of positive triples to sample during training
+  sampling_method: uniform  # Sampling method for randomly selecting positive triples
   negative_sampling:
     sampling_rate: 10  # Number of negative samples to produce per positive triple
     head_prob: 0.5  # Ratio of corrupting heads (i.e. 0.5 means corrupt 50% heads and 50% tails)
@@ -16,8 +16,7 @@ training:
 
 encoder:
   model: rgcn
-  num_layers: 2  # Number of graph convolution layers
-  node_embedding: 500  # Size of node embedding
+  num_layers: 1  # Number of graph convolution layers
   hidden1_size: 500  # Size of first hidden layer
   hidden2_size: 500  # Size of second hidden layer
   decomposition:
@@ -27,13 +26,14 @@ encoder:
     general: 0.5  # Dropout rate for all edges (except self-loops)
     self_loop: 0.2  # Dropout rate for self-loops
   weight_init: schlichtkrull-normal  # Weight Initialisation
-  bias_init: zeros  # Bias Initialisation
+  include_gain: False  # Add scaling factor depending on the type of non-linearity function used
+  bias_init: zeros  # Bias Initialisation (Delete this line to remove biases)
 
 decoder:
   model: distmult
   l2_penalty: 0.01
-  weight_init: normal
-  bias_init: zero
+  weight_init: standard-normal
+  include_gain: False  # Add scaling factor depending on the type of non-linearity function used
 
 evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.

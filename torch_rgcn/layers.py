@@ -6,6 +6,82 @@ import math
 import torch
 
 
+class DistMult(Module):
+    """ DistMult scoring function (from https://arxiv.org/pdf/1412.6575.pdf) """
+    def __init__(self,
+                 indim,
+                 outdim,
+                 num_nodes,
+                 num_rel,
+                 w_init='standard-normal',
+                 w_gain=False,
+                 b_init=None):
+        super(DistMult, self).__init__()
+        self.w_init = w_init
+        self.w_gain = w_gain
+        self.b_init = b_init
+
+        # Create weights & biases
+        self.relations = nn.Parameter(torch.FloatTensor(indim, outdim))
+        if b_init:
+            self.sbias = Parameter(torch.FloatTensor(num_nodes))
+            self.obias = Parameter(torch.FloatTensor(num_nodes))
+            self.pbias = Parameter(torch.FloatTensor(num_rel))
+        else:
+            self.register_parameter('sbias', None)
+            self.register_parameter('obias', None)
+            self.register_parameter('pbias', None)
+
+        self.initialise_parameters()
+
+    def initialise_parameters(self):
+        """
+        Initialise weights and biases
+
+        Options for initialising weights include:
+            glorot-uniform - glorot (aka xavier) initialisation using a uniform distribution
+            glorot-normal - glorot (aka xavier) initialisation using a normal distribution
+            schlichtkrull-uniform - schlichtkrull initialisation using a uniform distribution
+            schlichtkrull-normal - schlichtkrull initialisation using a normal distribution
+            normal - using a standard normal distribution
+            uniform - using a uniform distribution
+
+        Options for initialising biases include:
+            ones - setting all values to one
+            zeros - setting all values to zero
+            normal - using a standard normal distribution
+            uniform - using a uniform distribution
+        """
+        # Weights
+        init = select_w_init(self.w_init)
+        if self.w_gain:
+            gain = nn.init.calculate_gain('relu')
+            init(self.relations, gain=gain)
+        else:
+            init(self.relations)
+
+        # Biases
+        if self.b_init:
+            init = select_b_init(self.b_init)
+            init(self.sbias)
+            init(self.pbias)
+            init(self.obias)
+
+    def forward(self, triples, nodes):
+        """ Compute scores """
+        s_index = triples[:, 0]
+        p_index = triples[:, 1]
+        o_index = triples[:, 2]
+        s, p, o = nodes[s_index, :], self.relations[p_index, :], nodes[o_index, :]
+
+        scores = (s * p * o).sum(dim=1)
+
+        if self.b_init:
+            scores = scores + (self.sbias[s_index] + self.pbias[p_index] + self.obias[o_index])
+
+        return scores.view(-1)
+
+
 class RelationalGraphConvolution(Module):
     """
     Relational Graph Convolution (RGC) Layer for Node Classification
@@ -230,6 +306,7 @@ class RelationalGraphConvolutionRP(Module):
                  decomposition=None,
                  vertical_stacking=False,
                  w_init='glorot-normal',
+                 w_gain=False,
                  b_init=None):
         super(RelationalGraphConvolutionRP, self).__init__()
 
@@ -257,6 +334,7 @@ class RelationalGraphConvolutionRP(Module):
         self.edge_dropout = edge_dropout
         self.edge_dropout_self_loop = edge_dropout_self_loop
         self.w_init = w_init
+        self.w_gain = w_gain
         self.b_init = b_init
 
         # Create weight parameters
@@ -301,24 +379,14 @@ class RelationalGraphConvolutionRP(Module):
         """
 
         b_init = self.b_init
-        b_init = b_init.lower()
+        init = select_b_init(b_init)
+        init(self.bias)
 
-        if b_init in ['zeros', 'zero', 0]:
-            nn.init.zeros_(self.bias)
-        elif b_init in ['ones', 'one', 1]:
-            nn.init.ones_(self.bias)
-        elif b_init == 'uniform':
-            nn.init.uniform_(self.bias)
-        elif b_init == 'normal':
-            nn.init.normal_(self.bias)
-        else:
-            raise NotImplementedError(f'{b_init} initialisation has not been implemented!')
-
-    def initialise_weights(self, gain=None):
+    def initialise_weights(self):
         """
         Initialise weights parameters using one of the following methods:
-            glorot-uniform - xavier initialisation using a uniform distribution
-            glorot-normal - xavier initialisation using a normal distribution
+            glorot-uniform - glorot (aka xavier) initialisation using a uniform distribution
+            glorot-normal - glorot (aka xavier) initialisation using a normal distribution
             schlichtkrull-uniform - schlichtkrull initialisation using a uniform distribution
             schlichtkrull-normal - schlichtkrull initialisation using a normal distribution
             normal - using a standard normal distribution
@@ -326,20 +394,19 @@ class RelationalGraphConvolutionRP(Module):
         """
 
         w_init = self.w_init
-        w_init = w_init.lower()
-        print(w_init)
+        w_gain = self.w_gain
 
-        # TODO: Is gain even necessary?
-        if gain is None:
-            gain = 1.0
-        else:
+        # Add scaling factor according to non-linearity function used
+        if w_gain:
             gain = nn.init.calculate_gain('relu')
+        else:
+            gain = 1.0
 
-        init = select_init(w_init)
+        # Select appropriate initialisation method
+        init = select_w_init(w_init)
 
         if self.weight_decomp == 'block':
             init(self.blocks, gain=gain)
-            print('initializer', self.blocks.shape, torch.mean(self.blocks), torch.std(self.blocks))
         elif self.weight_decomp == 'basis':
             init(self.bases, gain=gain)
             init(self.comps, gain=gain)
