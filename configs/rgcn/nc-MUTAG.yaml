@@ -13,7 +13,7 @@ training:
 rgcn:
   model: rgcn
   layer1_l2_penalty: 0.0005  # l2 penalty on first layer weights
-  num_layers: 2  # Number of layers in RGCN
+  num_layers: 2  # Number of graph convolution layers
   hidden_size: 16
   decomposition:
     type: basis

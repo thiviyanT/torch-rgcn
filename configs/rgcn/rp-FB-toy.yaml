@@ -1,9 +1,9 @@
 dataset:
-  name: FB15k
+  name: FB-toy
 
 training:
-  epochs: 8000 # Maximum number of training epochs
-  graph_batch_size: 30000  # Number of positive triples to sample during training
+  epochs: 12000 # Maximum number of training epochs
+  graph_batch_size: 300  # Number of positive triples to sample during training
   sampling_method: edge-neighborhood  # Sampling method for randomly selecting positive triples
   negative_sampling:
     sampling_rate: 10  # Number of negative samples to produce per positive triple
@@ -17,11 +17,11 @@ training:
 encoder:
   model: rgcn
   num_layers: 1  # Number of graph convolution layers
-  hidden1_size: 200  # Size of first hidden layer
-  node_embedding: 200  # Size of node embedding
+  hidden1_size: 500  # Size of first hidden layer
+  node_embedding: 500  # Size of node embedding
   decomposition:
-    type: basis
-    num_bases: 2
+    type: block
+    num_blocks: 100
   edge_dropout:
     general: 0.5  # Dropout rate for all edges (except self-loops)
     self_loop: 0.2  # Dropout rate for self-loops

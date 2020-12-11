@@ -207,6 +207,10 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
         train_file = locate_file('data/fB15k-237/train.txt')
         val_file = locate_file('data/fB15k-237/valid.txt')
         test_file = locate_file('data/fB15k-237/test.txt')
+    elif name.lower() == 'fb-toy':
+        train_file = locate_file('data/fb-toy/train.txt')
+        val_file = locate_file('data/fb-toy/valid.txt')
+        test_file = locate_file('data/fb-toy/test.txt')
     elif name.lower() == 'wn18':
         train_file = locate_file('data/wn18/train.txt')
         val_file = locate_file('data/wn18/valid.txt')
@@ -224,8 +228,8 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
 
     if not use_test_set:
         test = val
-    else:
-        train = train + val
+    # else:
+    #     train = train + val
 
     if limit:
         train = train[:limit]
@@ -238,7 +242,7 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
         rels.add(p)
         nodes.add(o)
 
-    i2n, i2r = list(nodes), list(rels)
+    n, r = list(nodes), list(rels)
     n2i, r2i = {n: i for i, n in enumerate(nodes)}, {r: i for i, r in enumerate(rels)}
 
     all_triples = set()
@@ -248,4 +252,4 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
     train = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in train]
     test = [[n2i[st[0]], r2i[st[1]], n2i[st[2]]] for st in test]
 
-    return (n2i, i2n), (r2i, i2r), train, test, all_triples
+    return (n2i, n), (r2i, r), train, test, all_triples

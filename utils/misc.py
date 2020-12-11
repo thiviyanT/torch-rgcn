@@ -1,7 +1,7 @@
 from sacred import Experiment
 from sacred.observers import MongoObserver
 import numpy as np
-import random
+from random import sample
 import torch
 import os
 
@@ -25,6 +25,87 @@ def create_experiment(name='exp', database=None):
 # Relation Prediction Utils
 #######################################################################################################################
 
+def select_sampling(method):
+    method = method.lower()
+    if method == 'uniform':
+        return uniform_sampling
+    elif method == 'edge-neighborhood':
+        return edge_neighborhood
+    else:
+        raise NotImplementedError(f'{method} sampling method has not been implemented!')
+
+def uniform_sampling(graph, sample_size=30000, entities=None, train_triplets=None):
+    """Random uniform sampling"""
+    return sample(graph, sample_size)
+
+def edge_neighborhood(train_triples, sample_size=30000, entities=None):
+    """Edge neighborhood sampling"""
+
+    # TODO: Clean this up
+    entities = {v: k for k, v in entities.items()}
+    adj_list = [[] for _ in entities]
+    for i, triplet in enumerate(train_triples):
+        adj_list[triplet[0]].append([i, triplet[2]])
+        adj_list[triplet[2]].append([i, triplet[0]])
+
+    degrees = np.array([len(a) for a in adj_list])
+    adj_list = [np.array(a) for a in adj_list]
+
+    edges = np.zeros((sample_size), dtype=np.int32)
+
+    sample_counts = np.array([d for d in degrees])
+    picked = np.array([False for _ in train_triples])
+    seen = np.array([False for _ in degrees])
+
+    for i in range(0, sample_size):
+        weights = sample_counts * seen
+
+        if np.sum(weights) == 0:
+            weights = np.ones_like(weights)
+            weights[np.where(sample_counts == 0)] = 0
+
+        probabilities = (weights) / np.sum(weights)
+        chosen_vertex = np.random.choice(np.arange(degrees.shape[0]), p=probabilities)
+        chosen_adj_list = adj_list[chosen_vertex]
+        seen[chosen_vertex] = True
+
+        chosen_edge = np.random.choice(np.arange(chosen_adj_list.shape[0]))
+        chosen_edge = chosen_adj_list[chosen_edge]
+        edge_number = chosen_edge[0]
+
+        while picked[edge_number]:
+            chosen_edge = np.random.choice(np.arange(chosen_adj_list.shape[0]))
+            chosen_edge = chosen_adj_list[chosen_edge]
+            edge_number = chosen_edge[0]
+
+        edges[i] = edge_number
+        other_vertex = chosen_edge[1]
+        picked[edge_number] = True
+        sample_counts[chosen_vertex] -= 1
+        sample_counts[other_vertex] -= 1
+        seen[other_vertex] = True
+
+    edges = [train_triples[e] for e in edges]
+
+    return edges
+
+def corrupt(batch, num_nodes, head_corrupt_prob, device='cpu'):
+    """Corrupts the negatives of a batch of triples. Randomly corrupts either heads or tails."""
+    bs, ns, _ = batch.size()
+
+    # new entities to insert
+    corruptions = torch.randint(size=(bs * ns,),low=0, high=num_nodes, dtype=torch.long, device=device)
+
+    # boolean mask for entries to corrupt
+    mask = torch.bernoulli(torch.empty(
+        size=(bs, ns, 1), dtype=torch.float, device=device).fill_(head_corrupt_prob)).to(torch.bool)
+    zeros = torch.zeros(size=(bs, ns, 1), dtype=torch.bool, device=device)
+    mask = torch.cat([mask, zeros, ~mask], dim=2)
+
+    batch[mask] = corruptions
+
+    return batch.view(bs * ns, -1)
+
 def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
     """ Generates a set of negative samples by corrupting triples """
 
@@ -36,8 +117,11 @@ def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
 
     return negative_triples.tolist()
 
+def corrupt_heads(entity_dictionary, p, o):
+    """ Generate a list of candidate triples by replacing the head with every entity for each test triplet """
+    return [(s, p, o) for s in range(len(entity_dictionary))]
 
-def generate_candidates(s, p, entity_dictionary):
+def corrupt_tails(s, p, entity_dictionary):
     """ Generate a list of candidate triples by replacing the tail with every entity for each test triplet """
     return [(s, p, o) for o in range(len(entity_dictionary))]
 

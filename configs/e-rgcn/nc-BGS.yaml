@@ -14,7 +14,7 @@ rgcn:
   model: e-rgcn
   layer1_l2_penalty: 0.0005  # l2 penalty on first layer weights
   node_embedding_l2_penalty: 0.005  # l2 penalty on node embeddings
-  num_layers: 2  # Number of layers in RGCN
+  num_layers: 2  # Number of graph convolution layers
   node_embeddings: 512  # Size of node embeddings
   hidden_size: 16  # Number of hidden units in first layer of RGCN
   decomposition:
@@ -22,4 +22,4 @@ rgcn:
     num_bases: 40
 
 evaluation:
-  final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
+  final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.

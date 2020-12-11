@@ -1,6 +1,58 @@
-from math import floor
+from math import floor, sqrt
 import random
 import torch
+
+
+def schlichtkrull_std(tensor, gain):
+    """
+    a = \text{gain} \times \frac{3}{\sqrt{\text{fan\_in} + \text{fan\_out}}}
+    """
+    fan_in, fan_out = tensor.shape[0], tensor.shape[1]
+    return gain * 3.0 / sqrt(float(fan_in + fan_out))
+
+def schlichtkrull_normal_(tensor, gain=1.):
+    """Fill the input `Tensor` with values according to the Schlichtkrull method, using a normal distribution."""
+    std = schlichtkrull_std(tensor, gain)
+    with torch.no_grad():
+        return tensor.normal_(0.0, std)
+
+def schlichtkrull_uniform_(tensor, gain=1.):
+    """Fill the input `Tensor` with values according to the Schlichtkrull method, using a uniform distribution."""
+    std = schlichtkrull_std(tensor, gain)
+    with torch.no_grad():
+        return tensor.uniform_(-std, std)
+
+def select_b_init(init):
+    """Return functions for initialising biases"""
+    init = init.lower()
+    if init in ['zeros', 'zero', 0]:
+        return torch.nn.init.zeros_
+    elif init in ['ones', 'one', 1]:
+        return torch.nn.init.ones_
+    elif init == 'uniform':
+        return torch.nn.init.uniform_
+    elif init == 'normal':
+        return torch.nn.init.normal_
+    else:
+        raise NotImplementedError(f'{init} initialisation has not been implemented!')
+
+def select_w_init(init):
+    """Return functions for initialising weights"""
+    init = init.lower()
+    if init in ['glorot-uniform', 'xavier-uniform']:
+        return torch.nn.init.xavier_uniform_
+    elif init in ['glorot-normal', 'xavier-normal']:
+        return torch.nn.init.xavier_normal_
+    elif init == 'schlichtkrull-uniform':
+        return schlichtkrull_uniform_
+    elif init == 'schlichtkrull-normal':
+        return schlichtkrull_normal_
+    elif init in ['normal', 'standard-normal']:
+        return torch.nn.init.normal_
+    elif init == 'uniform':
+        return torch.nn.init.uniform_
+    else:
+        raise NotImplementedError(f'{init} initialisation has not been implemented!')
 
 def drop_edges(triples, num_nodes, general_edo, self_loop_edo):
     """ Performs edge dropout by actually removing the triples """
@@ -44,6 +96,34 @@ def sum_sparse(indices, values, size, row_normalisation=True, device='cpu'):
 
     return sums.view(k)
 
+
+def generate_inverses(triples, num_rels):
+    """ Generates nverse relations """
+
+    # Swap around head and tail. Create new relation ids for inverse relations.
+    inverse_relations = torch.cat([triples[:, 2, None], triples[:, 1, None] + num_rels, triples[:, 0, None]], dim=1)
+    assert inverse_relations.size() == triples.size()
+
+    return inverse_relations
+
+
+def generate_self_loops(triples, num_nodes, num_rels, self_loop_keep_prob, device='cpu'):
+    """ Generates self-loop triples and then applies edge dropout """
+
+    # Create a new relation id for self loop relation.
+    all = torch.arange(num_nodes, device=device)[:, None]
+    id  = torch.empty(size=(num_nodes, 1), device=device, dtype=torch.long).fill_(2*num_rels)
+    self_loops = torch.cat([all, id, all], dim=1)
+    assert self_loops.size() == (num_nodes, 3)
+
+    # Apply edge dropout
+    mask = torch.bernoulli(torch.empty(size=(num_nodes,), dtype=torch.float, device=device).fill_(
+        self_loop_keep_prob)).to(torch.bool)
+    self_loops = self_loops[mask, :]
+
+    return torch.cat([triples, self_loops], dim=0)
+
+
 def add_inverse_and_self(triples, num_nodes, num_rels, device='cpu'):
     """ Adds inverse relations and self loops to a tensor of triples """
 
@@ -85,9 +165,9 @@ def stack_matrices(triples, num_nodes, num_rels, vertical_stacking=True, device=
 
     return indices, size
 
-def block_diag(m, device='cpu'):
+def block_diag(m):
     """
-    courtesy of: https://gist.github.com/yulkang/2e4fc3061b45403f455d7f4c316ab168
+    Source: https://gist.github.com/yulkang/2e4fc3061b45403f455d7f4c316ab168
     Make a block diagonal matrix along dim=-3
     EXAMPLE:
     block_diag(torch.ones(4,3,2))
@@ -95,6 +175,8 @@ def block_diag(m, device='cpu'):
     Prepend batch dimensions if needed.
     You can also give a list of matrices.
     """
+
+    device = 'cuda' if m.is_cuda else 'cpu'  # Note: Using cuda status of m as proxy to decide device
 
     if type(m) is list:
         m = torch.cat([m1.unsqueeze(-3) for m1 in m], -3)
@@ -114,8 +196,4 @@ def block_diag(m, device='cpu'):
     )
 
 def attach_dim(v, n_dim_to_prepend=0, n_dim_to_append=0):
-    return v.reshape(
-        torch.Size([1] * n_dim_to_prepend)
-        + v.shape
-        + torch.Size([1] * n_dim_to_append))
-
+    return v.reshape(torch.Size([1] * n_dim_to_prepend) + v.shape + torch.Size([1] * n_dim_to_append))

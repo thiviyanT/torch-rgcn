@@ -1,4 +1,4 @@
-from utils.misc import create_experiment, negative_sampling, generate_candidates, filter_triples, compute_metrics
+from utils.misc import create_experiment, negative_sampling, corrupt_tails, filter_triples, compute_metrics
 from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
@@ -29,10 +29,12 @@ def train(dataset,
     # Set default values
     max_epochs = training["epochs"] if "epochs" in training else 500
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
+    node_embedding_l2_penalty = encoder["node_embedding_l2_penalty"] if "node_embedding_l2_penalty" in encoder else 0.0
+    edge_dropout = encoder["edge_dropout"]["general"] if "edge_dropout" in encoder else 0.0
     decoder_l2_penalty = decoder["l2_penalty"] if "l2_penalty" in decoder else 0.0
     final_run = evaluation["final_run"] if "final_run" in evaluation else False
     filtered = evaluation["filtered"] if "filtered" in evaluation else False
-    eval_size = evaluation["early_stopping"]["eval_size"] if "eval_size" in evaluation["early_stopping"] else 100
+    eval_size = evaluation["early_stopping"]["eval_size"] if "eval_size" in evaluation["early_stopping"] else None
     eval_every = evaluation["early_stopping"]["check_every"] if "check_every" in evaluation["early_stopping"] else 100
     early_stop_metric = evaluation["early_stopping"]["metric"] if "metric" in evaluation["early_stopping"] else 'mrr'
     num_stops = evaluation["early_stopping"]["num_stops"] if "num_stops" in evaluation["early_stopping"] else 2
@@ -42,8 +44,8 @@ def train(dataset,
     # Note: Validation dataset will be used as test if this is not a test run
     (n2i, i2n), (r2i, i2r), train, test, all_triples = load_link_prediction_data(dataset["name"], use_test_set=final_run)
 
+    # Pad the node list to make it divisible by the number of blocks
     if "decomposition" in encoder and encoder["decomposition"]["type"] == 'block':
-        # Pad the node list to make it divisible by the number of blocks
         added = 0
         while len(i2n) % encoder["decomposition"]["num_blocks"] != 0:
             label = 'null' + str(added)
@@ -60,15 +62,7 @@ def train(dataset,
     num_relations = len(r2i)
     test = torch.tensor(test, dtype=torch.long, device=device)
 
-    # Split off a portion of training data for early stopping
-    random.shuffle(train)
-    early_stop_sample = train[:eval_size]
-    train = train[eval_size:]
-
-
-    if encoder["model"] == 'rgcn':
-        model = RelationPredictor
-    elif encoder["model"] == 'c-rgcn':
+    if encoder["model"] == 'c-rgcn':
         model = CompressionRelationPredictor
     else:
         raise NotImplementedError(f'\'{encoder["model"]}\' encoder has not been implemented!')
@@ -78,7 +72,8 @@ def train(dataset,
         nnodes=num_nodes,
         nrel=num_relations,
         encoder_config=encoder,
-        decoder_config=decoder)
+        decoder_config=decoder
+    )
 
     if use_cuda:
         model.cuda()
@@ -102,6 +97,9 @@ def train(dataset,
     num_no_improvements = 0
     epoch_counter = 0
 
+    # pytorch_total_params = sum(p.numel() for p in model.parameters())
+    # print('Total number of parameters:', pytorch_total_params)
+
     print("Start training...")
     for epoch in range(1, max_epochs+1):
         epoch_counter += 1
@@ -121,35 +119,59 @@ def train(dataset,
             neg_labels = torch.zeros(len(neg_train), 1, dtype=torch.float, device=device)
             train_lbl = torch.cat([pos_labels, neg_labels], dim=0).view(-1)
 
+        graph = torch.tensor(train, dtype=torch.long, device=device)
+        # Apply edge dropout on all edges
+        if model.training and edge_dropout > 0.0:
+            keep_prob = 1 - edge_dropout
+            mask = torch.bernoulli(torch.empty(size=(graph.size(0),), dtype=torch.float, device=device).fill_(
+                keep_prob)).to(torch.bool)
+            graph = graph[mask, :]
+
         # Train model on training data
-        predictions = model(train_idx)
+        predictions = model(graph, train_idx)
         loss = F.binary_cross_entropy_with_logits(predictions, train_lbl)
 
+        # Apply l2 penalty on decoder (i.e. relations parameter)
         if decoder_l2_penalty > 0.0:
-            # Apply l2 penalty on decoder (i.e. relations parameter)
             decoder_l2 = model.relations.pow(2).sum()
             loss = loss + decoder_l2_penalty * decoder_l2
+
+        # Apply l2 penalty on node embeddings
+        if node_embedding_l2_penalty > 0.0:
+            if encoder["model"] == 'c-rgcn':
+                node_embedding_l2 = model.node_embeddings.pow(2).sum()
+                loss = loss + node_embedding_l2_penalty * node_embedding_l2
+            else:
+                raise ValueError(f"Cannot apply L2-regularisation on node embeddings for {encoder['model']} model")
 
         t2 = time.time()
         loss.backward()
         optimiser.step()
         t3 = time.time()
 
-        # Evaluate
+        # Evaluate on validation set
         if epoch % eval_every == 0:
             print("Starting evaluation...")
             with torch.no_grad():
                 model.eval()
                 mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
-                for s, p, o in tqdm.tqdm(early_stop_sample):
+                graph = torch.tensor(train, dtype=torch.long, device=device)
+
+                if eval_size is None:
+                    test_sample = test
+                else:
+                    num_test_triples = test.shape[0]
+                    test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
+
+                for s, p, o in tqdm.tqdm(test_sample):
                     s, p, o = s, p, o
                     correct_triple = (s, p, o)
-                    candidates = generate_candidates(s, p, n2i)
+                    candidates = corrupt_tails(s, p, n2i)
                     if filtered:
                         candidates = filter_triples(candidates, all_triples, correct_triple)
                     candidates = torch.tensor(candidates, dtype=torch.long, device=device)
-                    scores = model(candidates)
+                    scores = model(graph, candidates)
                     mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
                     mrr_scores.append(mrr)
                     hits_at_1.append(hits_at_k[1])
@@ -200,6 +222,8 @@ def train(dataset,
     print("Starting final evaluation...")
     mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
+    graph = torch.tensor(train, dtype=torch.long, device=device)
+
     with torch.no_grad():
         model.eval()
 
@@ -207,17 +231,17 @@ def train(dataset,
             test_sample = test
         else:
             num_test_triples = test.shape[0]
-            test_sample = test[random.sample(range(num_test_triples), k=eval_size)]
+            test_sample = test[random.sample(range(num_test_triples), k=final_eval_size)]
 
         # Final evaluation is carried out on the entire dataset
         for s, p, o in tqdm.tqdm(test_sample):
             s, p, o = s.item(), p.item(), o.item()
             correct_triple = (s, p, o)
-            candidates = generate_candidates(s, p, n2i)
+            candidates = corrupt_tails(s, p, n2i)
             if filtered:
                 candidates = filter_triples(candidates, all_triples, correct_triple)
             candidates = torch.tensor(candidates, dtype=torch.long, device=device)
-            scores = model(candidates)
+            scores = model(graph, candidates)
             mrr, hits_at_k = compute_metrics(scores, candidates, correct_triple, k=[1, 3, 10])
             mrr_scores.append(mrr)
             hits_at_1.append(hits_at_k[1])
