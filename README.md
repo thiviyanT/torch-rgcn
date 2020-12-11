@@ -16,9 +16,9 @@ To download all datasets, use: `bash get_data.sh`
 
 To install the necessary packages, use: `bash setup_dependencies.sh`
 
-Now, you can install the RGCN module with: `pip install -e .`  
+Activate the virtual environment: `conda activate torch_rgcn_venv`
 
-(Note: You may need to manually activate the virtual environment using `conda activate torch_rgcn_venv`)
+Now, you can install the RGCN module with: `pip install -e .`  
 
 ## Usage
 
