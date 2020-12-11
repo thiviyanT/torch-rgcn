@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 --->
 
-## [0.1.0] - 2020/07/15 [#TODO: Update release date]
+## [0.1.0] - 2020/12/18 [#TODO: Update release date]
 Initial public release of Torch-RGCN. 
 
 ### Added
