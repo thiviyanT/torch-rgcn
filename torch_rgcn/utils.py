@@ -196,8 +196,4 @@ def block_diag(m):
     )
 
 def attach_dim(v, n_dim_to_prepend=0, n_dim_to_append=0):
-    return v.reshape(
-        torch.Size([1] * n_dim_to_prepend)
-        + v.shape
-        + torch.Size([1] * n_dim_to_append))
-
+    return v.reshape(torch.Size([1] * n_dim_to_prepend) + v.shape + torch.Size([1] * n_dim_to_append))

@@ -4,7 +4,6 @@ from torch.nn.parameter import Parameter
 from torch import nn
 import math
 import torch
-import time  #TODO Remove this
 
 
 class DistMult(Module):
