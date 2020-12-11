@@ -25,6 +25,14 @@ def train(dataset,
           evaluation,
           _run):
 
+    # DEBUG
+    _run.add_artifact('./experiments/predict_links_batched.py')
+    _run.add_artifact('./torch_rgcn/layers.py')
+    _run.add_artifact('./torch_rgcn/models.py')
+    _run.add_artifact('./torch_rgcn/utils.py')
+    _run.add_artifact('./utils/data.py')
+    _run.add_artifact('./utils/misc.py')
+
     # Set default values
     max_epochs = training["epochs"] if "epochs" in training else 5000
     use_cuda = training["use_cuda"] if "use_cuda" in training else False
@@ -39,17 +47,24 @@ def train(dataset,
     eval_every = evaluation["check_every"] if "check_every" in evaluation else 2000
 
     # Note: Validation dataset will be used as test if this is not a test run
-    (n2i, i2n), (r2i, i2r), train, test, all_triples = load_link_prediction_data(dataset["name"], use_test_set=final_run)
+    (n2i, nodes), (r2i, relations), train, test, all_triples = load_link_prediction_data(dataset["name"], use_test_set=final_run)
 
     # Pad the node list to make it divisible by the number of blocks
     if "decomposition" in encoder and encoder["decomposition"]["type"] == 'block':
         added = 0
-        while len(i2n) % encoder["decomposition"]["num_blocks"] != 0:
+
+        if "node_embedding" in encoder:
+            block_size = encoder["node_embedding"] / encoder["decomposition"]["num_blocks"]
+        else:
+            # TODO
+            raise NotImplementedError()
+
+        while len(nodes) % block_size != 0:
             label = 'null' + str(added)
-            i2n.append(label)
-            n2i[label] = len(i2n) - 1
+            nodes.append(label)
+            n2i[label] = len(nodes) - 1
             added += 1
-        print(f'nodes padded to {len(i2n)} to make it divisible by {encoder["decomposition"]["num_blocks"]} (added {added} null nodes).')
+        print(f'nodes padded to {len(nodes)} to make it divisible by {block_size} (added {added} null nodes).')
 
     # Check for available GPUs
     use_cuda = use_cuda and torch.cuda.is_available()
@@ -80,6 +95,8 @@ def train(dataset,
         optimiser = torch.optim.AdamW
     elif training["optimiser"]["algorithm"] == 'adagrad':
         optimiser = torch.optim.Adagrad
+    elif training["optimiser"]["algorithm"] == 'sgd':
+        optimiser = torch.optim.SGD
     else:
         raise NotImplementedError(f'\'{training["optimiser"]["algorithm"]}\' optimiser has not been implemented!')
 
@@ -88,13 +105,22 @@ def train(dataset,
         lr=training["optimiser"]["learn_rate"],
         weight_decay=training["optimiser"]["weight_decay"]
     )
+    # def prod(x):
+    #     m = 1
+    #     for a in x:
+    #         m *= a
+    #     return m
+    #
+    # print(sum([prod(parm.size()) for parm in model.parameters()]))
+    #
+    # for name, param in model.named_parameters():
+    #     print(name, param.size(), param.min().item(), param.max().item(), param.mean().item(), param.std().item())
+    # exit()
 
     sampling_function = select_sampling(sampling_method)
 
     epoch_counter = 0
 
-    # pytorch_total_params = sum(p.numel() for p in model.parameters())
-    # print('Total number of parameters:', pytorch_total_params)
 
     print("Start training...")
     for epoch in range(1, max_epochs+1):
@@ -104,7 +130,7 @@ def train(dataset,
         model.train()
 
         with torch.no_grad():
-            # Sample triples randomly
+            # Randomly sample positive triples
             positives = sampling_function(train, sample_size=graph_batch_size, entities=n2i)
             positives = torch.tensor(positives, dtype=torch.long, device=device)
             # Generate negative samples triples for training
@@ -117,22 +143,18 @@ def train(dataset,
             neg_labels = torch.zeros(graph_batch_size*neg_sample_rate, 1, dtype=torch.float, device=device)
             train_lbl = torch.cat([pos_labels, neg_labels], dim=0).view(-1)
 
-        graph = positives
-        # Apply edge dropout on all edges
-        if model.training and edge_dropout > 0.0:
-            keep_prob = 1 - edge_dropout
-            mask = torch.bernoulli(torch.empty(size=(graph_batch_size,), dtype=torch.float, device=device).fill_(
-                keep_prob)).to(torch.bool)
-            graph = graph[mask, :]
+            graph = positives
+            # Apply edge dropout
+            if model.training and edge_dropout > 0.0:
+                keep_prob = 1 - edge_dropout
+                graph = graph[torch.randperm(graph.size(0))]
+                sample_size = round(keep_prob * graph.size(0))
+                graph = graph[sample_size:, :]
 
         # Train model on training data
-        predictions = model(graph, batch_idx)
+        predictions, penalty = model(graph, batch_idx)
         loss = F.binary_cross_entropy_with_logits(predictions, train_lbl)
-
-        # Apply l2 penalty on decoder (i.e. relations parameter)
-        if decoder_l2_penalty > 0.0:
-            decoder_l2 = model.scoring_function.relations.pow(2).sum()
-            loss = loss + decoder_l2_penalty * decoder_l2
+        loss  = loss + (decoder_l2_penalty * penalty)
 
         t2 = time.time()
         loss.backward()
@@ -141,12 +163,12 @@ def train(dataset,
 
         # Evaluate on validation set
         if epoch % eval_every == 0:
-            print("Starting evaluation...")
             with torch.no_grad():
+                print("Starting evaluation...")
 
                 # Note: Evaluation is performed on the CPU due to memory requirements
-                if use_cuda:
-                    model.cpu()
+                # if use_cuda:
+                #     model.cpu()
 
                 model.eval()
                 mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
@@ -154,28 +176,36 @@ def train(dataset,
                 graph = torch.tensor(train, dtype=torch.long)
 
                 for s, p, o in tqdm.tqdm(test):
-                    s, p, o = s, p, o
-                    correct_triple = (s, p, o)
-                    c_heads = corrupt_heads(n2i, p, o)
-                    c_tails = corrupt_tails(s, p, n2i)
-                    batch = c_heads + c_tails
-                    if filtered:
-                        batch = filter_triples(batch, all_triples, correct_triple)
-                    batch = torch.tensor(batch, dtype=torch.long)
-                    scores = model(graph, batch)
-                    mrr, hits_at_k = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
+                    s, p, o = s.item(), p.item(), o.item()
+                    mrr, hits_at_k = 0, dict({1:0.0, 3:0.0, 10:0.0})
+                    for corrupt_head in [True, False]:
+                        correct_triple = (s, p, o)
+                        if corrupt_head:
+                            batch = corrupt_heads(n2i, p, o)
+                        else:
+                            batch = corrupt_tails(s, p, n2i)
+                        if filtered:
+                            batch = filter_triples(batch, all_triples, correct_triple)
+                        batch = torch.tensor(batch, dtype=torch.long)
+                        scores, _ = model(graph, batch)
+                        mrr_, hits_at_k_ = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
+                        mrr += mrr_ * 0.5
+                        hits_at_k[1] += hits_at_k_[1] * 0.5
+                        hits_at_k[3] += hits_at_k_[3] * 0.5
+                        hits_at_k[10] += hits_at_k_[10] * 0.5
+
                     mrr_scores.append(mrr)
                     hits_at_1.append(hits_at_k[1])
                     hits_at_3.append(hits_at_k[3])
                     hits_at_10.append(hits_at_k[10])
 
-                mrr = np.mean(np.array(mrr_scores))
-                hits_at_1 = np.mean(np.array(hits_at_1))
-                hits_at_3 = np.mean(np.array(hits_at_3))
-                hits_at_10 = np.mean(np.array(hits_at_10))
+                mrr = round(np.mean(np.array(mrr_scores)), 3)
+                hits_at_1 = round(np.mean(np.array(hits_at_1)), 3)
+                hits_at_3 = round(np.mean(np.array(hits_at_3)), 3)
+                hits_at_10 = round(np.mean(np.array(hits_at_10)), 3)
 
-            if use_cuda:
-                model.cuda()
+            # if use_cuda:
+            #     model.cuda()
 
             _run.log_scalar("training.loss", loss.item(), step=epoch)
             _run.log_scalar("test.mrr", mrr, step=epoch)
@@ -183,12 +213,12 @@ def train(dataset,
             _run.log_scalar("test.hits_at_3", hits_at_3, step=epoch)
             _run.log_scalar("test.hits_at_10", hits_at_10, step=epoch)
 
-            filtered = 'filtered' if filtered else 'raw'
+            filtered_ = 'filtered' if filtered else 'raw'
             print(f'[Epoch {epoch}] Loss: {loss.item():.5f} Forward: {(t2 - t1):.3f}s Backward: {(t3 - t2):.3f}s '
-                  f'MRR({filtered}): {mrr:.3f} \t'
-                  f'Hits@1({filtered}): {hits_at_1:.3f} \t'
-                  f'Hits@3({filtered}): {hits_at_3:.3f} \t'
-                  f'Hits@10({filtered}): {hits_at_10:.3f}')
+                  f'MRR({filtered_}): {mrr} \t'
+                  f'Hits@1({filtered_}): {hits_at_1} \t'
+                  f'Hits@3({filtered_}): {hits_at_3} \t'
+                  f'Hits@10({filtered_}): {hits_at_10:}')
 
         else:
             _run.log_scalar("training.loss", loss.item(), step=epoch)
@@ -196,48 +226,57 @@ def train(dataset,
 
     print('Training is complete!')
 
-    print("Starting final evaluation...")
-    mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
-
     with torch.no_grad():
-        # Note: Evaluation is performed on the CPU due to memory requirements
-        if use_cuda:
-            model.cpu()
+        print("Starting final evaluation...")
+
+        # # Note: Evaluation is performed on the CPU due to memory requirements
+        # if use_cuda:
+        #     model.cpu()
 
         model.eval()
+        mrr_scores, hits_at_1, hits_at_3, hits_at_10 = list(), list(), list(), list()
 
         graph = torch.tensor(train, dtype=torch.long)
 
         # Final evaluation is carried out on the entire dataset
         for s, p, o in tqdm.tqdm(test):
             s, p, o = s.item(), p.item(), o.item()
-            correct_triple = (s, p, o)
-            c_heads = corrupt_heads(n2i, p, o)
-            c_tails = corrupt_tails(s, p, n2i)
-            batch = c_heads + c_tails
-            if filtered:
-                batch = filter_triples(batch, all_triples, correct_triple)
-            batch = torch.tensor(batch, dtype=torch.long)
-            scores = model(graph, batch)
-            mrr, hits_at_k = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
+            mrr, hits_at_k = 0, dict({1: 0.0, 3: 0.0, 10: 0.0})
+            for corrupt_head in [True, False]:
+                correct_triple = (s, p, o)
+                if corrupt_head:
+                    batch = corrupt_heads(n2i, p, o)
+                else:
+                    batch = corrupt_tails(s, p, n2i)
+                if filtered:
+                    batch = filter_triples(batch, all_triples, correct_triple)
+                batch = torch.tensor(batch, dtype=torch.long)
+                scores, _ = model(graph, batch)
+                mrr_, hits_at_k_ = compute_metrics(scores, batch, correct_triple, k=[1, 3, 10])
+                mrr += mrr_ * 0.5
+                hits_at_k[1] += hits_at_k_[1] * 0.5
+                hits_at_k[3] += hits_at_k_[3] * 0.5
+                hits_at_k[10] += hits_at_k_[10] * 0.5
+
             mrr_scores.append(mrr)
             hits_at_1.append(hits_at_k[1])
             hits_at_3.append(hits_at_k[3])
             hits_at_10.append(hits_at_k[10])
 
-    mrr = np.mean(np.array(mrr_scores))
-    hits_at_1 = np.mean(np.array(hits_at_1))
-    hits_at_3 = np.mean(np.array(hits_at_3))
-    hits_at_10 = np.mean(np.array(hits_at_10))
+        mrr = round(np.mean(np.array(mrr_scores)), 3)
+        hits_at_1 = round(np.mean(np.array(hits_at_1)), 3)
+        hits_at_3 = round(np.mean(np.array(hits_at_3)), 3)
+        hits_at_10 = round(np.mean(np.array(hits_at_10)), 3)
 
     _run.log_scalar("test.mrr", mrr)
     _run.log_scalar("test.hits_at_1", hits_at_1)
     _run.log_scalar("test.hits_at_3", hits_at_3)
     _run.log_scalar("test.hits_at_10", hits_at_10)
 
-    print(f'[Final Evaluation] '
+    filtered_ = 'filtered' if filtered else 'raw'
+    print(f'[Final Scores] '
           f'Total Epoch {epoch_counter} \t'
-          f'MRR({filtered}): {mrr:.3f} \t'
-          f'Hits@1({filtered}): {hits_at_1:.3f} \t'
-          f'Hits@3({filtered}): {hits_at_3:.3f} \t'
-          f'Hits@10({filtered}): {hits_at_10:.3f}')
+          f'MRR({filtered_}): {mrr} \t'
+          f'Hits@1({filtered_}): {hits_at_1} \t'
+          f'Hits@3({filtered_}): {hits_at_3} \t'
+          f'Hits@10({filtered_}): {hits_at_10}')
