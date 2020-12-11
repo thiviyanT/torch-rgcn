@@ -4,6 +4,7 @@ from torch.nn.parameter import Parameter
 from torch import nn
 import math
 import torch
+import time  #TODO Remove this
 
 
 class DistMult(Module):
@@ -66,6 +67,15 @@ class DistMult(Module):
             init(self.sbias)
             init(self.pbias)
             init(self.obias)
+
+    def s_penalty(self, triples, nodes):
+        """  """
+        s_index = triples[:, 0]
+        p_index = triples[:, 1]
+        o_index = triples[:, 2]
+        s, p, o = nodes[s_index, :], self.relations[p_index, :], nodes[o_index, :]
+
+        return s.pow(2).mean() + p.pow(2).mean() + o.pow(2).mean()
 
     def forward(self, triples, nodes):
         """ Compute scores """
@@ -313,6 +323,8 @@ class RelationalGraphConvolutionRP(Module):
         assert (num_nodes is not None or num_relations is not None or out_features is not None), \
             "The following must be specified: number of nodes, number of relations and output dimension!"
 
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
         # If featureless, use number of nodes instead as input dimension
         in_dim = in_features if in_features is not None else num_nodes
         out_dim = out_features
@@ -320,8 +332,7 @@ class RelationalGraphConvolutionRP(Module):
         # Unpack arguments
         weight_decomp = decomposition['type'] if decomposition is not None and 'type' in decomposition else None
         num_bases = decomposition['num_bases'] if decomposition is not None and 'num_bases' in decomposition else None
-        num_blocks = decomposition[
-            'num_blocks'] if decomposition is not None and 'num_blocks' in decomposition else None
+        num_blocks = decomposition['num_blocks'] if decomposition is not None and 'num_blocks' in decomposition else None
 
         self.num_nodes = num_nodes
         self.num_relations = num_relations
@@ -339,13 +350,13 @@ class RelationalGraphConvolutionRP(Module):
 
         # Create weight parameters
         if self.weight_decomp is None:
-            self.weights = Parameter(torch.FloatTensor(num_relations, in_dim, out_dim))
+            self.weights = Parameter(torch.FloatTensor(num_relations, in_dim, out_dim).to(device))
         elif self.weight_decomp == 'basis':
             # Weight Regularisation through Basis Decomposition
             assert num_bases > 0, \
                 'Number of bases should be set to higher than zero for basis decomposition!'
-            self.bases = Parameter(torch.FloatTensor(num_bases, in_dim, out_dim))
-            self.comps = Parameter(torch.FloatTensor(num_relations, num_bases))
+            self.bases = Parameter(torch.FloatTensor(num_bases, in_dim, out_dim).to(device))
+            self.comps = Parameter(torch.FloatTensor(num_relations, num_bases).to(device))
         elif self.weight_decomp == 'block':
             # Weight Regularisation through Block Diagonal Decomposition
             assert self.num_blocks > 0, \
@@ -354,8 +365,9 @@ class RelationalGraphConvolutionRP(Module):
                 f'For block diagonal decomposition, input dimensions ({in_dim}, {out_dim}) must be divisible ' \
                 f'by number of blocks ({self.num_blocks})'
             self.blocks = nn.Parameter(
-                torch.FloatTensor(num_relations, self.num_blocks, in_dim // self.num_blocks,
-                                  out_dim // self.num_blocks))
+                torch.FloatTensor(num_relations - 1, self.num_blocks, in_dim // self.num_blocks,
+                                  out_dim // self.num_blocks).to(device))
+            self.blocks_self = nn.Parameter(torch.FloatTensor(in_dim, out_dim).to(device))
         else:
             raise NotImplementedError(f'{self.weight_decomp} decomposition has not been implemented')
 
@@ -406,7 +418,22 @@ class RelationalGraphConvolutionRP(Module):
         init = select_w_init(w_init)
 
         if self.weight_decomp == 'block':
-            init(self.blocks, gain=gain)
+            # TODO Clean this up
+            def schlichtkrull_std(shape, gain):
+                """
+                a = \text{gain} \times \frac{3}{\sqrt{\text{fan\_in} + \text{fan\_out}}}
+                """
+                fan_in, fan_out = shape[0], shape[1]
+                return gain * 3.0 / sqrt(float(fan_in + fan_out))
+
+            def schlichtkrull_normal_(tensor, shape, gain=1.):
+                """Fill the input `Tensor` with values according to the Schlichtkrull method, using a normal distribution."""
+                std = schlichtkrull_std(shape, gain)
+                with torch.no_grad():
+                    return tensor.normal_(0.0, std)
+
+            schlichtkrull_normal_(self.blocks, shape=[(self.num_relations-1)//2, self.in_features//self.num_blocks], gain=gain)
+            schlichtkrull_normal_(self.blocks_self, shape=[(self.num_relations-1)//2, self.in_features//self.num_blocks], gain=gain)
         elif self.weight_decomp == 'basis':
             init(self.bases, gain=gain)
             init(self.comps, gain=gain)
@@ -420,12 +447,13 @@ class RelationalGraphConvolutionRP(Module):
         assert (features is None) == (self.in_features is None), \
             "Layer has not been properly configured to take in features!"
 
+        # TODO clean up this
         if self.weight_decomp is None:
             weights = self.weights
         elif self.weight_decomp == 'basis':
             weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
         elif self.weight_decomp == 'block':
-            weights = block_diag(self.blocks)
+            pass
         else:
             raise NotImplementedError(f'{self.weight_decomp} decomposition has not been implemented')
 
@@ -435,10 +463,13 @@ class RelationalGraphConvolutionRP(Module):
         num_relations = self.num_relations
         vertical_stacking = self.vertical_stacking
         original_num_relations = int((self.num_relations-1)/2)  # Count without inverse and self-relations
-        device = 'cuda' if weights.is_cuda else 'cpu'  # Note: Using cuda status of weights as proxy to decide device
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        triples = triples.to(device)
+        features = features.to(device)
 
+        # TODO - clean this
         # Edge dropout on self-loops
-        if self.training:
+        if self.training and self.edge_dropout["self_loop_type"] != 'schlichtkrull-dropout':
             self_loop_keep_prob = 1 - self.edge_dropout["self_loop"]
         else:
             self_loop_keep_prob = 1
@@ -480,20 +511,45 @@ class RelationalGraphConvolutionRP(Module):
         else:
             adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
-        assert weights.size() == (num_relations, in_dim, out_dim)
-
+        # TODO - Clean up
         if self.in_features is None:
+            if self.edge_dropout["self_loop_type"] == 'schlichtkrull-dropout':
+                raise NotImplementedError()
             # Featureless
+            if self.weight_decomp == 'block':
+                weights = block_diag(self.blocks)
+                weights = torch.cat([weights, self.blocks_self], dim=0)
             output = torch.mm(adj, weights.view(num_relations * in_dim, out_dim))
         elif self.vertical_stacking:
+            if self.edge_dropout["self_loop_type"] == 'schlichtkrull-dropout':
+                raise NotImplementedError()
             # Adjacency matrix vertically stacked
+            if self.weight_decomp == 'block':
+                weights = block_diag(self.blocks)
+                weights = torch.cat([weights, self.blocks_self], dim=0)
             af = torch.spmm(adj, features)
             af = af.view(self.num_relations, self.num_nodes, in_dim)
             output = torch.einsum('rio, rni -> no', weights, af)
         else:
             # Adjacency matrix horizontally stacked
-            fw = torch.einsum('ni, rio -> rno', features, weights).contiguous()
-            output = torch.mm(adj, fw.view(self.num_relations * self.num_nodes, out_dim))
+            if self.weight_decomp == 'block':
+                n = features.size(0)
+                r = num_relations - 1
+                input_block_size = in_dim // self.num_blocks
+                output_block_size = out_dim // self.num_blocks
+                num_blocks = self.num_blocks
+                block_features = features.view(n, num_blocks, input_block_size)
+                fw = torch.einsum('nbi, rbio -> rnbo', block_features, self.blocks).contiguous()
+                assert fw.shape == (r, n, num_blocks, output_block_size), f"{fw.shape}, {(r, n, num_blocks, output_block_size)}"
+                fw = fw.view(r, n, out_dim)
+                self_fw = torch.einsum('ni, io -> no', features, self.blocks_self)[None, :, :]
+                if self.training and self.edge_dropout["self_loop_type"] == 'schlichtkrull-dropout':
+                    self_fw = nn.functional.dropout(self_fw, p=self.edge_dropout["self_loop"], training=True,inplace=False)
+                fw = torch.cat([fw, self_fw], dim=0)
+                output = torch.mm(adj, fw.view(self.num_relations * self.num_nodes, out_dim))
+            else:
+                fw = torch.einsum('ni, rio -> rno', features, weights).contiguous()
+                output = torch.mm(adj, fw.view(self.num_relations * self.num_nodes, out_dim))
 
         assert output.size() == (self.num_nodes, out_dim)
 

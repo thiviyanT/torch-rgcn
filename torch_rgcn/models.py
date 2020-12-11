@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from torch import nn
 import torch
 
-
 ######################################################################################
 # Models for Experiment Reproduction
 ######################################################################################
@@ -32,6 +31,8 @@ class RelationPredictor(nn.Module):
         encoder_b_init = encoder_config["bias_init"] if "bias_init" in encoder_config else None
 
         # Decoder config
+        decoder_l2_type = decoder_config["l2_penalty_type"] if "l2_penalty_type" in decoder_config else None
+        decoder_l2 = decoder_config["l2_penalty"] if "l2_penalty" in decoder_config else None
         decoder_w_init = decoder_config["weight_init"] if "weight_init" in decoder_config else None
         decoder_gain = decoder_config["include_gain"] if "include_gain" in decoder_config else False
         decoder_b_init = decoder_config["bias_init"] if "bias_init" in decoder_config else None
@@ -45,8 +46,12 @@ class RelationPredictor(nn.Module):
         self.rgcn_layers = rgcn_layers
         self.nemb = nemb
 
+        self.decoder_l2_type = decoder_l2_type
+        self.decoder_l2 = decoder_l2
+
         if nemb is not None:
             self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
+            self.node_embeddings_bias = nn.Parameter(torch.zeros(1, nemb))
             init = select_w_init(encoder_w_init)
             init(self.node_embeddings)
             nfeat = self.nemb
@@ -71,7 +76,7 @@ class RelationPredictor(nn.Module):
                 out_features=nhid2,
                 edge_dropout=edge_dropout,
                 decomposition=decomposition,
-                vertical_stacking=True,
+                vertical_stacking=False,
                 w_init=encoder_w_init,
                 w_gain=encoder_gain,
                 b_init=encoder_b_init
@@ -81,11 +86,23 @@ class RelationPredictor(nn.Module):
         out_feat = nhid2 if rgcn_layers == 2 else nhid1
         self.scoring_function = DistMult(nrel, out_feat, nnodes, nrel, decoder_w_init, decoder_gain, decoder_b_init)
 
+    def compute_penalty(self, batch, x):
+        """ Compute L2 penalty for decoder """
+        if self.decoder_l2 == 0.0:
+            return 0
+
+        # TODO Clean this up
+        if self.decoder_l2_type == 'schlichtkrull-l2':
+            return self.scoring_function.s_penalty(batch, x)
+        else:
+            return self.scoring_function.relations.pow(2).sum()
+
     def forward(self, graph, batch):
         """ Embed relational graph and then compute score """
 
         if self.nemb is not None:
-            x = self.node_embeddings
+            x = self.node_embeddings + self.node_embeddings_bias
+            x = torch.nn.functional.relu(x)
             x = self.rgc1(graph, features=x)
         else:
             x = self.rgc1(graph)
@@ -95,7 +112,8 @@ class RelationPredictor(nn.Module):
             x = self.rgc2(graph, features=x)
 
         scores = self.scoring_function(batch, x)
-        return scores
+        penalty = self.compute_penalty(batch, x)
+        return scores, penalty
 
 
 class NodeClassifier(nn.Module):
