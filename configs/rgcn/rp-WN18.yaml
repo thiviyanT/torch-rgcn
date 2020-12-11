@@ -2,41 +2,42 @@ dataset:
   name: WN18
 
 training:
-  epochs: 10000  # Limit the number of training epochs
-  graph_batch_size: 30000  # Number of triples to randomly sample during training
+  epochs: 8000 # Maximum number of training epochs
+  graph_batch_size: 30000  # Number of positive triples to sample during training
+  sampling_method: edge-neighborhood  # Sampling method for randomly selecting positive triples
   negative_sampling:
-    sampling_rate: 10  # Number of negative samples to produce per triple
-    head_prob: 0.5  # Probability of corrupting heads (i.e. 0.5 means corrupt 50% heads and 50% tails)
+    sampling_rate: 10  # Number of negative samples to produce per positive triple
+    head_prob: 0.5  # Ratio of corrupting heads (i.e. 0.5 means corrupt 50% heads and 50% tails)
   optimiser:
     algorithm: adam
     weight_decay: 0.0
     learn_rate: 0.01
-  gradient_clip_value: 1.0  # Clip value for Gradient Clipping
-  use_cuda: True  # If true, model is trained on GPU
+  use_cuda: False  # If true, model is trained on available GPUs.
 
 encoder:
   model: rgcn
   num_layers: 1  # Number of graph convolution layers
-  node_embedding: 200  # Size of node embedding
   hidden1_size: 200  # Size of first hidden layer
+  node_embedding: 200  # Size of node embedding
   decomposition:
     type: basis
     num_bases: 2
   edge_dropout:
     general: 0.5  # Dropout rate for all edges (except self-loops)
     self_loop: 0.2  # Dropout rate for self-loops
+    self_loop_type: schlichtkrull-dropout
+  weight_init: schlichtkrull-normal  # Weight Initialisation
+  include_gain: False  # Add scaling factor depending on the type of non-linearity function used
+  bias_init: zeros  # Bias Initialisation (Delete this line to remove biases)
 
 decoder:
   model: distmult
+  l2_penalty_type: 'schlichtkrull-l2'
   l2_penalty: 0.01
+  weight_init: standard-normal
+  include_gain: False  # Add scaling factor depending on the type of non-linearity function used
 
 evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
   filtered: True  # If true, reports filtered metrics. Otherwise, raw metrics are computed.
-  early_stopping:
-    check_every: 500  # Evaluate model performance at every n epoch interval
-    metric: mrr
-    min_epochs: 1000  # Minimum of epochs before early stopping can be applied
-    num_stops: 1  # If no improvement in metric is detected after n times, apply early stopping
-    eval_size: 500  # Number of triples to randomly sample from training dataset
-#  final_eval_size: 10000  # Limit the number of triples to randomly sample from test dataset
+  check_every: 2000  # Evaluate model at regular intervals (By default, every 2000 epochs)
