@@ -320,6 +320,57 @@ class EmbeddingNodeClassifier(NodeClassifier):
         return x
 
 
+class NoHiddenEmbeddingNodeClassifier(NodeClassifier):
+    """ No-hidden Node classification model with node embeddings as the feature matrix """
+    def __init__(self,
+                 triples=None,
+                 nnodes=None,
+                 nrel=None,
+                 nfeat=None,
+                 nhid=16,
+                 nlayers=2,
+                 nclass=None,
+                 edge_dropout=None,
+                 decomposition=None,
+                 nemb=None):
+
+        assert nemb is not None, "Size of node embedding not specified!"
+        nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
+
+        assert nlayers == 2, "For this model only 2 layers are normally configured (for now)"
+        nhid = nemb
+
+        super(NoHiddenEmbeddingNodeClassifier, self)\
+            .__init__(triples, nnodes, nrel, nfeat, nhid, 1, nclass, edge_dropout, decomposition)
+
+        # This model has a custom first layer
+        self.rgcn_no_hidden = RelationalGraphConvolution(triples=self.triples_plus,
+                                                         num_nodes=nnodes,
+                                                         num_relations=nrel * 2 + 1,
+                                                         in_features=nfeat,
+                                                         out_features=nhid,
+                                                         edge_dropout=edge_dropout,
+                                                         decomposition=decomposition,
+                                                         vertical_stacking=True,
+                                                         no_hidden=True)
+
+        # Node embeddings
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
+
+        # Initialise Parameters
+        nn.init.xavier_uniform_(self.node_embeddings)
+
+    def forward(self):
+        """ Embed relational graph and then compute class probabilities """
+        x = self.rgcn_no_hidden(self.node_embeddings)
+
+        # Normally there will be checked if the desired number of layers is 2, but this model implies it (for now).
+        x = F.relu(x)
+        x = self.rgc1(features=x)
+
+        return x
+
+
 class GlobalNodeClassifier(NodeClassifier):
     """ Node classification model with global readouts """
     def __init__(self,

@@ -1,5 +1,5 @@
 from utils.misc import create_experiment
-from torch_rgcn.models import NodeClassifier, EmbeddingNodeClassifier, GlobalNodeClassifier
+from torch_rgcn.models import NodeClassifier, EmbeddingNodeClassifier, NoHiddenEmbeddingNodeClassifier, GlobalNodeClassifier
 from utils.data import load_node_classification_data
 from sklearn.metrics import accuracy_score
 from statistics import stdev
@@ -68,6 +68,8 @@ def train_model(dataset,
         model = GlobalNodeClassifier
     elif rgcn["model"] == 'e-rgcn':
         model = EmbeddingNodeClassifier
+    elif rgcn["model"] == 'nh-rgcn':
+        model = NoHiddenEmbeddingNodeClassifier
     else:
         raise NotImplementedError(f'\'{rgcn["model"]}\' model has not been implemented!')
 
@@ -124,7 +126,7 @@ def train_model(dataset,
 
         # Apply l2 penalty on node embeddings
         if node_embedding_l2_penalty > 0.0:
-            if rgcn["model"] == 'g-rgcn' or rgcn["model"] == 'e-rgcn':
+            if rgcn["model"] == 'g-rgcn' or rgcn["model"] == 'e-rgcn' or rgcn["model"] == "nh-rgcn":
                 node_embedding_l2 = model.node_embeddings.pow(2).sum()
                 loss = loss + node_embedding_l2_penalty * node_embedding_l2
             else:
