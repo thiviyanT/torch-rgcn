@@ -1,33 +1,9 @@
-import torch
-from torch import nn
+from torch_rgcn.utils import block_diag, stack_matrices, sum_sparse, drop_edges
 from torch.nn.modules.module import Module
 from torch.nn.parameter import Parameter
-from rgcn.utils import block_diag, stack_matrices, sum_sparse, drop_edges
+from torch import nn
 import math
-
-
-class EmbeddingLayer(nn.Module):
-    def __init__(self,
-                 in_feat,
-                 out_feat,
-                 bias=True):
-        super(EmbeddingLayer, self).__init__()
-        self.embedding = torch.nn.Embedding(in_feat, out_feat)
-
-        # Instantiate biases
-        if bias:
-            self.bias = Parameter(torch.FloatTensor(in_feat))
-        else:
-            self.register_parameter('bias', None)
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        stdv = 1.0 / math.sqrt(self.weights.size(1))
-        self.bias.uniform_(-stdv, stdv)
-
-    def forward(self, g):
-        return self.embedding(g)
+import torch
 
 
 class RelationalGraphConvolution(Module):
@@ -43,6 +19,7 @@ class RelationalGraphConvolution(Module):
                  bias=True,
                  decomposition=None,
                  vertical_stacking=False,
+                 no_hidden=False,
                  reset_mode='xavier'):
         super(RelationalGraphConvolution, self).__init__()
 
@@ -67,18 +44,31 @@ class RelationalGraphConvolution(Module):
         self.num_bases = num_bases
         self.num_blocks = num_blocks
         self.vertical_stacking = vertical_stacking
+        self.no_hidden = no_hidden
         self.edge_dropout = edge_dropout
         self.edge_dropout_self_loop = edge_dropout_self_loop
 
+        # If this flag is active, no hidden layer (with adaptive parameters) is instantiated, only identity matrices
+        # which function as a stacking mechanism for the feature matrix
+        if self.no_hidden:
+            identity_matrix = torch.eye(self.in_features)
+            identity_matrix = identity_matrix.reshape((1, self.in_features, self.in_features))
+
+            self.weights = nn.Parameter(identity_matrix.repeat(self.num_relations, 1, 1), requires_grad=False)
+
+            self.out_features = self.in_features
+            self.weight_decomp = None
+            bias = False
+
         # Instantiate weights
-        if self.weight_decomp is None:
+        elif self.weight_decomp is None:
             self.weights = Parameter(torch.FloatTensor(num_relations, in_dim, out_dim))
         elif self.weight_decomp == 'basis':
             # Weight Regularisation through Basis Decomposition
-            assert self.num_bases > 0, \
+            assert num_bases > 0, \
                 'Number of bases should be set to higher than zero for basis decomposition!'
-            self.bases = Parameter(torch.FloatTensor(self.num_bases, in_dim, out_dim))
-            self.comps = Parameter(torch.FloatTensor(num_relations, self.num_bases))
+            self.bases = Parameter(torch.FloatTensor(num_bases, in_dim, out_dim))
+            self.comps = Parameter(torch.FloatTensor(num_relations, num_bases))
         elif self.weight_decomp == 'block':
             # Weight Regularisation through Block Diagonal Decomposition
             assert self.num_blocks > 0, \
@@ -102,7 +92,10 @@ class RelationalGraphConvolution(Module):
     def reset_parameters(self, reset_mode='xavier'):
         """ Initialise biases and weights (xavier or uniform) """
 
-        if reset_mode == 'xavier':
+        # If the weights in this layer are to be fixed, no initialization process is activated
+        if self.no_hidden is True:
+            pass
+        elif reset_mode == 'xavier':
             if self.weight_decomp == 'block':
                 nn.init.xavier_uniform_(self.blocks, gain=nn.init.calculate_gain('relu'))
             elif self.weight_decomp == 'basis':
@@ -146,42 +139,57 @@ class RelationalGraphConvolution(Module):
         # Apply edge dropout
         if edge_dropout is not None and self.training:
 
-            assert 'general' in edge_dropout, 'General edge dropout must be specified!'
+            assert 'general' in edge_dropout and 'self_loop' in edge_dropout, \
+                'General and self-loop edge dropouts must be specified!'
             assert type(edge_dropout['general']) is float and 0.0 <= edge_dropout['general'] <= 1.0, \
-                "Edge dropout rate must between 0.0 and 1.0 (inclusive)."
+                "Edge dropout rates must between 0.0 and 1.0!"
 
-            # TODO: Check with Peter. This applies general dropout if one for self loop is not given. Should I be more transparent about this?
             general_edo = edge_dropout['general']
-            self_loop_edo = edge_dropout['self_loop'] if 'self_loop' in edge_dropout else edge_dropout
+            self_loop_edo = edge_dropout['self_loop']
 
             triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
-        # Horizontally/Vertically stack adjacency matrices
-        adj_indices, adj_size = stack_matrices(
-            triples,
-            num_nodes,
-            num_relations,
-            vertical_stacking=vertical_stacking
-        )
-        num_triples = adj_indices.size(0)
-        vals = torch.ones(num_triples, dtype=torch.float)
-
-        # Apply row-wise normalisation
-        vals = vals / sum_sparse(adj_indices, vals, adj_size)
-
-        # Construct adjacency matrix
-        adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
-
-        # Apply weight regularisation
+        # Choose weights
         if weight_decomp is None:
             weights = self.weights
         elif weight_decomp == 'basis':
             weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
         elif weight_decomp == 'block':
-            # TODO: Rewrite this using my own implementation
             weights = block_diag(self.blocks)
         else:
             raise NotImplementedError(f'{weight_decomp} decomposition has not been implemented')
+
+        # Determine whether to use cuda or not
+        if weights.is_cuda:
+            device = 'cuda'
+        else:
+            device = 'cpu'
+
+        # Stack adjacency matrices (vertically/horizontally)
+        adj_indices, adj_size = stack_matrices(
+            triples,
+            num_nodes,
+            num_relations,
+            vertical_stacking=vertical_stacking,
+            device=device
+        )
+
+        num_triples = adj_indices.size(0)
+        vals = torch.ones(num_triples, dtype=torch.float, device=device)
+
+        # Apply normalisation (vertical-stacking -> row-wise rum & horizontal-stacking -> column-wise sum)
+        sums = sum_sparse(adj_indices, vals, adj_size, row_normalisation=vertical_stacking, device=device)
+        if not vertical_stacking:
+            # Rearrange column-wise normalised value to reflect original order (because of transpose-trick)
+            n = (len(vals) - num_nodes) // 2
+            sums = torch.cat([sums[n:2 * n], sums[:n], sums[2 * n:]], dim=0)
+        vals = vals / sums
+
+        # Construct adjacency matrix
+        if device == 'cuda':
+            adj = torch.cuda.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
+        else:
+            adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
         assert weights.size() == (num_relations, in_dim, out_dim)
 
@@ -195,12 +203,8 @@ class RelationalGraphConvolution(Module):
             output = torch.einsum('rio, rni -> no', weights, af)
         else:
             # Adjacency matrix horizontally stacked
-            features = features[None, :, :].expand(self.num_relations, self.num_nodes, in_dim)
-            fw = torch.einsum('rni, rio -> rno', features, weights).contiguous()
+            fw = torch.einsum('ni, rio -> rno', features, weights).contiguous()
             output = torch.mm(adj, fw.view(self.num_relations * self.num_nodes, out_dim))
-
-        # Note: An explicit sum operation is not required since it is free using matrix multiplication
-        # Combine representations of different relations using permutation-invariant SUM operation
 
         assert output.size() == (self.num_nodes, out_dim)
         

@@ -16,7 +16,7 @@ def drop_edges(triples, num_nodes, general_edo, self_loop_edo):
 
     return triples[ind, :]
 
-def sum_sparse(indices, values, size, device='cpu', row_normalisation=True):
+def sum_sparse(indices, values, size, row_normalisation=True, device='cpu'):
     """
     Sum the rows or columns of a sparse matrix, and redistribute the
     results back to the non-sparse row/column entries
@@ -35,8 +35,13 @@ def sum_sparse(indices, values, size, device='cpu', row_normalisation=True):
         size = size[1], size[0]
 
     ones = torch.ones((size[1], 1), device=device)
-    sums = torch.spmm(torch.sparse.FloatTensor(indices.t(), values, torch.Size(size)), ones)
+    if device == 'cuda':
+        values = torch.cuda.sparse.FloatTensor(indices.t(), values, torch.Size(size))
+    else:
+        values = torch.sparse.FloatTensor(indices.t(), values, torch.Size(size))
+    sums = torch.spmm(values, ones)
     sums = sums[indices[:, 0], 0]
+
     return sums.view(k)
 
 def add_inverse_and_self(triples, num_nodes, num_rels, device='cpu'):
@@ -55,7 +60,7 @@ def add_inverse_and_self(triples, num_nodes, num_rels, device='cpu'):
     # Note: Self-loops are appended to the end and this makes it easier to apply different edge dropout rates.
     return torch.cat([triples, inverse_relations, self_loops], dim=0)
 
-def stack_matrices(triples, num_nodes, num_rels, vertical_stacking=True):
+def stack_matrices(triples, num_nodes, num_rels, vertical_stacking=True, device='cpu'):
     """
     Computes a sparse adjacency matrix for the given graph (the adjacency matrices of all
     relations are stacked vertically).
@@ -72,7 +77,7 @@ def stack_matrices(triples, num_nodes, num_rels, vertical_stacking=True):
     else:
         to = offset + to
 
-    indices = torch.cat([fr[:, None], to[:, None]], dim=1)
+    indices = torch.cat([fr[:, None], to[:, None]], dim=1).to(device)
 
     assert indices.size(0) == triples.size(0)
     assert indices[:, 0].max() < size[0], f'{indices[0, :].max()}, {size}, {r}'

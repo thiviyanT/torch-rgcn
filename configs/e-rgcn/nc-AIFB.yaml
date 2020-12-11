@@ -1,0 +1,22 @@
+dataset:
+  name: AIFB
+  prune: False  # If true, prunes edges that are further than two steps from the target labels
+
+training:
+  epochs: 50
+  optimiser:
+    algorithm: adam
+    weight_decay: 0.0
+    learn_rate: 0.01
+  use_cuda: True  # If true, model is trained on GPU
+
+rgcn:
+  model: e-rgcn
+  layer1_l2_penalty: 0.0  # l2 penalty on first layer weights
+  node_embedding_l2_penalty: 0.005  # l2 penalty on node embeddings
+  num_layers: 2  # Number of layers in RGCN
+  node_embeddings: 1024  # Size of node embeddings
+  hidden_size: 16  # Number of hidden units in first layer of RGCN
+
+evaluation:
+  final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used.
