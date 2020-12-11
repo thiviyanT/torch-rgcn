@@ -139,10 +139,7 @@ class RelationalGraphConvolution(Module):
         # If this flag is active, no hidden layer (with adaptive parameters) is instantiated, only identity matrices
         # which function as a stacking mechanism for the feature matrix
         if self.no_hidden:
-            identity_matrix = torch.eye(self.in_features)
-            identity_matrix = identity_matrix.reshape((1, self.in_features, self.in_features))
-
-            self.weights = nn.Parameter(identity_matrix.repeat(self.num_relations, 1, 1), requires_grad=False)
+            self.weights = torch.nn.Parameter(torch.empty((self.num_relations, self.in_features)), requires_grad=True)
 
             self.out_features = self.in_features
             self.weight_decomp = None
@@ -180,10 +177,7 @@ class RelationalGraphConvolution(Module):
     def reset_parameters(self, reset_mode='glorot_uniform'):
         """ Initialise biases and weights (glorot_uniform or uniform) """
 
-        # If the weights in this layer are to be fixed, no initialization process is activated
-        if self.no_hidden is True:
-            pass
-        elif reset_mode == 'glorot_uniform':
+        if reset_mode == 'glorot_uniform':
             if self.weight_decomp == 'block':
                 nn.init.xavier_uniform_(self.blocks, gain=nn.init.calculate_gain('relu'))
             elif self.weight_decomp == 'basis':
@@ -293,11 +287,18 @@ class RelationalGraphConvolution(Module):
         else:
             adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
-        assert weights.size() == (num_relations, in_dim, out_dim)
+        if self.no_hidden:
+            assert weights.size() == (num_relations, in_dim)
+        else:
+            assert weights.size() == (num_relations, in_dim, out_dim)
 
         if self.in_features is None:
             # Featureless
             output = torch.mm(adj, weights.view(num_relations * in_dim, out_dim))
+        elif self.no_hidden:
+            fw = torch.einsum('ij,kj->kij', features, weights)
+            fw = torch.reshape(fw, (self.num_relations * self.num_nodes, in_dim))
+            output = torch.mm(adj, fw)
         elif self.vertical_stacking:
             # Adjacency matrix vertically stacked
             af = torch.spmm(adj, features)

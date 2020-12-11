@@ -351,14 +351,14 @@ class NoHiddenEmbeddingNodeClassifier(NodeClassifier):
                                                          out_features=nhid,
                                                          edge_dropout=edge_dropout,
                                                          decomposition=decomposition,
-                                                         vertical_stacking=True,
+                                                         vertical_stacking=False,
                                                          no_hidden=True)
 
         # Node embeddings
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
 
         # Initialise Parameters
-        nn.init.xavier_uniform_(self.node_embeddings)
+        nn.init.kaiming_normal_(self.node_embeddings, mode='fan_in')
 
     def forward(self):
         """ Embed relational graph and then compute class probabilities """
