@@ -38,14 +38,13 @@ def uniform_sampling(graph, sample_size=30000, entities=None, train_triplets=Non
     """Random uniform sampling"""
     return sample(graph, sample_size)
 
-def edge_neighborhood(graph, sample_size=30000, entities=None):
+def edge_neighborhood(train_triples, sample_size=30000, entities=None):
     """Edge neighborhood sampling"""
 
     # TODO: Clean this up
-    # TODO: Figure out what this function does
-
+    entities = {v: k for k, v in entities.items()}
     adj_list = [[] for _ in entities]
-    for i, triplet in enumerate(graph):
+    for i, triplet in enumerate(train_triples):
         adj_list[triplet[0]].append([i, triplet[2]])
         adj_list[triplet[2]].append([i, triplet[0]])
 
@@ -55,7 +54,7 @@ def edge_neighborhood(graph, sample_size=30000, entities=None):
     edges = np.zeros((sample_size), dtype=np.int32)
 
     sample_counts = np.array([d for d in degrees])
-    picked = np.array([False for _ in graph])
+    picked = np.array([False for _ in train_triples])
     seen = np.array([False for _ in degrees])
 
     for i in range(0, sample_size):
@@ -86,8 +85,8 @@ def edge_neighborhood(graph, sample_size=30000, entities=None):
         sample_counts[other_vertex] -= 1
         seen[other_vertex] = True
 
-    print(edges)
-    exit()
+    edges = [train_triples[e] for e in edges]
+
     return edges
 
 def corrupt(batch, num_nodes, head_corrupt_prob, device='cpu'):
@@ -98,7 +97,8 @@ def corrupt(batch, num_nodes, head_corrupt_prob, device='cpu'):
     corruptions = torch.randint(size=(bs * ns,),low=0, high=num_nodes, dtype=torch.long, device=device)
 
     # boolean mask for entries to corrupt
-    mask = torch.bernoulli(torch.empty(size=(bs, ns, 1), dtype=torch.float, device=device).fill_(head_corrupt_prob)).to(torch.bool)
+    mask = torch.bernoulli(torch.empty(
+        size=(bs, ns, 1), dtype=torch.float, device=device).fill_(head_corrupt_prob)).to(torch.bool)
     zeros = torch.zeros(size=(bs, ns, 1), dtype=torch.bool, device=device)
     mask = torch.cat([mask, zeros, ~mask], dim=2)
 
