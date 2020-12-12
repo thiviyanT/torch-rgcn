@@ -14,7 +14,6 @@ rgcn:
   model: nh-rgcn
   num_layers: 2  # Number of graph convolution layers
   node_embeddings: 32  # Size of node embeddings
-  hidden_size: 32  # Number of hidden units in first layer of RGCN
 
 evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
