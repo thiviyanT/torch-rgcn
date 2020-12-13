@@ -3,6 +3,7 @@ from sacred.observers import MongoObserver
 import numpy as np
 from random import sample
 import torch
+import tqdm
 import os
 
 
@@ -24,6 +25,91 @@ def create_experiment(name='exp', database=None):
 #######################################################################################################################
 # Relation Prediction Utils
 #######################################################################################################################
+
+def generate_true_dict(all_triples):
+    """ Generates a pair of dictionaries containing all true tail and head completions """
+    heads, tails = {(p, o) : [] for _, p, o in all_triples}, {(s, p) : [] for s, p, _ in all_triples}
+
+    for s, p, o in all_triples:
+        heads[p, o].append(s)
+        tails[s, p].append(o)
+
+    return heads, tails
+
+def filter_scores_(scores, batch, true_triples, head=True):
+    """ Filters a score matrix by setting the scores of known non-target true triples to -inf """
+
+    # TODO Clean this up
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    indices = [] # indices of triples whose scores should be set to -infty
+
+    heads, tails = true_triples
+
+    for i, (s, p, o) in enumerate(batch):
+        s, p, o = triple = (s.item(), p.item(), o.item())
+        if head:
+            indices.extend([(i, si) for si in heads[p, o] if si != s])
+        else:
+            indices.extend([(i, oi) for oi in tails[s, p] if oi != o])
+        #-- We add the indices of all know triples except the one corresponding to the target triples.
+
+    indices = torch.tensor(indices, device=device)
+
+    scores[indices[:, 0], indices[:, 1]] = float('-inf')
+
+def evaluate(model, graph, test_set, true_triples, num_nodes, batch_size=16, hits_at_k=[1, 3, 10], filter_candidates=True, verbose=True):
+    """ Evaluates a triple scoring model. Does the sorting in a single, GPU-accelerated operation. """
+
+    # TODO Clean this up
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    rng = tqdm.trange if verbose else range
+
+    ranks = []
+    for head in [True, False]:  # head or tail prediction
+
+        for fr in rng(0, len(test_set), batch_size):
+            to = min(fr + batch_size, len(test_set))
+
+            batch = test_set[fr:to, :].to(device=device)
+            bn, _ = batch.size()
+
+            # compute the full score matrix (filter later)
+            bases   = batch[:, 1:] if head else batch[:, :2]
+            targets = batch[:, 0]  if head else batch[:, 2]
+
+            # collect the triples for which to compute scores
+            bexp = bases.view(bn, 1, 2).expand(bn, num_nodes, 2)
+            ar   = torch.arange(num_nodes, device=device).view(1, num_nodes, 1).expand(bn, num_nodes, 1)
+            toscore = torch.cat([ar, bexp] if head else [bexp, ar], dim=2)
+            assert toscore.size() == (bn, num_nodes, 3)
+
+            scores, _ = model(graph, toscore)
+            assert scores.size() == (bn, num_nodes)
+
+            # filter out the true triples that aren't the target
+            if filter_candidates:
+                filter_scores_(scores, batch, true_triples, head=head)
+
+            # Select the true scores, and count the number of values larger than than
+            true_scores = scores[torch.arange(bn, device=device), targets]
+            raw_ranks = torch.sum(scores > true_scores.view(bn, 1), dim=1, dtype=torch.long)
+            # -- This is the "optimistic" rank (assuming it's sorted to the front of the ties)
+            num_ties = torch.sum(scores == true_scores.view(bn, 1), dim=1, dtype=torch.long)
+
+            # Account for ties (put the true example halfway down the ties)
+            branks = raw_ranks + (num_ties - 1) // 2
+
+            ranks.extend((branks + 1).tolist())
+
+    mrr = sum([1.0/rank for rank in ranks])/len(ranks)
+
+    hits = []
+    for k in hits_at_k:
+        hits.append(sum([1.0 if rank <= k else 0.0 for rank in ranks]) / len(ranks))
+
+    return mrr, tuple(hits), ranks
 
 def select_sampling(method):
     method = method.lower()

@@ -197,3 +197,10 @@ def block_diag(m):
 
 def attach_dim(v, n_dim_to_prepend=0, n_dim_to_append=0):
     return v.reshape(torch.Size([1] * n_dim_to_prepend) + v.shape + torch.Size([1] * n_dim_to_append))
+
+def split_spo(triples):
+    """ Splits tensor into subject, predicate and object """
+    if len(triples.shape) == 2:
+        return triples[:, 0], triples[:, 1], triples[:, 2]
+    else:
+        return triples[:, :, 0], triples[:, :, 1], triples[:, :, 2]

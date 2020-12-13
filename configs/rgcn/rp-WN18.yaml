@@ -2,7 +2,7 @@ dataset:
   name: WN18
 
 training:
-  epochs: 8000 # Maximum number of training epochs
+  epochs: 7000 # Maximum number of training epochs
   graph_batch_size: 30000  # Number of positive triples to sample during training
   sampling_method: edge-neighborhood  # Sampling method for randomly selecting positive triples
   negative_sampling:
@@ -12,7 +12,7 @@ training:
     algorithm: adam
     weight_decay: 0.0
     learn_rate: 0.01
-  use_cuda: False  # If true, model is trained on available GPUs.
+  use_cuda: True  # If true, model is trained on available GPUs.
 
 encoder:
   model: rgcn
@@ -40,4 +40,6 @@ decoder:
 evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
   filtered: True  # If true, reports filtered metrics. Otherwise, raw metrics are computed.
-  check_every: 2000  # Evaluate model at regular intervals (By default, every 2000 epochs)
+  check_every: 500  # Evaluate model at regular intervals (By default, every 2000 epochs)
+  batch_size: 32  # Number of triples per evaluation batch
+  verbose: True  # Show evaluation progress bar

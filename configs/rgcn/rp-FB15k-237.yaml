@@ -42,3 +42,5 @@ evaluation:
   final_run: True  # If true, evaluates model on test set. Otherwise, validation set is used.
   filtered: True  # If true, reports filtered metrics. Otherwise, raw metrics are computed.
   check_every: 2000  # Evaluate model at regular intervals (By default, every 2000 epochs)
+  batch_size: 400  # Number of triples per evaluation batch
+  verbose: True  # Show evaluation progress bar

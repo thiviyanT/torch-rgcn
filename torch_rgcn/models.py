@@ -97,7 +97,7 @@ class RelationPredictor(nn.Module):
         else:
             return self.scoring_function.relations.pow(2).sum()
 
-    def forward(self, graph, batch):
+    def forward(self, graph, triples):
         """ Embed relational graph and then compute score """
 
         if self.nemb is not None:
@@ -111,8 +111,8 @@ class RelationPredictor(nn.Module):
             x = F.relu(x)
             x = self.rgc2(graph, features=x)
 
-        scores = self.scoring_function(batch, x)
-        penalty = self.compute_penalty(batch, x)
+        scores = self.scoring_function(triples, x)
+        penalty = self.compute_penalty(triples, x)
         return scores, penalty
 
 

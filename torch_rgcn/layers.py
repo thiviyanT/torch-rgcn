@@ -68,27 +68,27 @@ class DistMult(Module):
             init(self.obias)
 
     def s_penalty(self, triples, nodes):
-        """  """
-        s_index = triples[:, 0]
-        p_index = triples[:, 1]
-        o_index = triples[:, 2]
+        """ Compute Schlichtkrull L2 penalty for the decoder """
+
+        s_index, p_index, o_index = split_spo(triples)
+
         s, p, o = nodes[s_index, :], self.relations[p_index, :], nodes[o_index, :]
 
         return s.pow(2).mean() + p.pow(2).mean() + o.pow(2).mean()
 
     def forward(self, triples, nodes):
-        """ Compute scores """
-        s_index = triples[:, 0]
-        p_index = triples[:, 1]
-        o_index = triples[:, 2]
+        """ Score candidate triples """
+
+        s_index, p_index, o_index = split_spo(triples)
+
         s, p, o = nodes[s_index, :], self.relations[p_index, :], nodes[o_index, :]
 
-        scores = (s * p * o).sum(dim=1)
+        scores = (s * p * o).sum(dim=-1)
 
         if self.b_init:
             scores = scores + (self.sbias[s_index] + self.pbias[p_index] + self.obias[o_index])
 
-        return scores.view(-1)
+        return scores
 
 
 class RelationalGraphConvolution(Module):
