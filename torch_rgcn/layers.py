@@ -189,8 +189,6 @@ class RelationalGraphConvolution(Module):
             if self.bias is not None:
                 torch.nn.init.zeros_(self.bias)
         elif reset_mode == 'schlichtkrull':
-            # Schlichtkrull initilisation implemented as described in https://github.com/MichSchli/RelationPrediction/blob/c77b094fe5c17685ed138dae9ae49b304e0d8d89/code/common/shared_functions.py#L12
-
             if self.weight_decomp == 'block':
                 nn.init.xavier_uniform_(self.blocks, gain=nn.init.calculate_gain('relu'))
             elif self.weight_decomp == 'basis':
@@ -353,8 +351,8 @@ class RelationalGraphConvolutionRP(Module):
 
         self.num_nodes = num_nodes
         self.num_relations = num_relations
-        self.in_features = in_features
-        self.out_features = out_features
+        self.in_features = in_dim  # TODO in_dim
+        self.out_features = out_dim  # TODO out_dim
         self.weight_decomp = weight_decomp
         self.num_bases = num_bases
         self.num_blocks = num_blocks

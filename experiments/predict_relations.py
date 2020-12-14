@@ -1,5 +1,5 @@
 from utils.misc import *
-from torch_rgcn.models import RelationPredictor
+from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
 import torch
@@ -79,6 +79,8 @@ def train(dataset,
 
     if encoder["model"] == 'rgcn':
         model = RelationPredictor
+    elif encoder["model"] == 'c-rgcn':
+        model = CompressionRelationPredictor
     else:
         raise NotImplementedError(f'\'{encoder["model"]}\' encoder has not been implemented!')
 
@@ -122,8 +124,13 @@ def train(dataset,
         model.train()
 
         with torch.no_grad():
-            # Randomly sample positive triples
-            positives = sampling_function(train, sample_size=graph_batch_size, entities=n2i)
+            if graph_batch_size is None:
+                # Use entire graph
+                positives = train
+                graph_batch_size = len(train)
+            else:
+                # Randomly sample triples from graph
+                positives = sampling_function(train, sample_size=graph_batch_size, entities=n2i)
             positives = torch.tensor(positives, dtype=torch.long, device=device)
             # Generate negative samples triples for training
             negatives = positives.clone()[:, None, :].expand(graph_batch_size, neg_sample_rate, 3).contiguous()
@@ -210,10 +217,10 @@ def train(dataset,
 
         hits_at_1, hits_at_3, hits_at_10 = hits
 
-        _run.log_scalar("test.mrr", mrr)
-        _run.log_scalar("test.hits_at_1", hits_at_1)
-        _run.log_scalar("test.hits_at_3", hits_at_3)
-        _run.log_scalar("test.hits_at_10", hits_at_10)
+        _run.log_scalar("test.mrr", mrr, step=epoch_counter)
+        _run.log_scalar("test.hits_at_1", hits_at_1, step=epoch_counter)
+        _run.log_scalar("test.hits_at_3", hits_at_3, step=epoch_counter)
+        _run.log_scalar("test.hits_at_10", hits_at_10, step=epoch_counter)
 
         filtered_ = 'filtered' if filtered else 'raw'
         print(f'[Final Scores] '

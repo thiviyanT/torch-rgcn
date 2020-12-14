@@ -54,6 +54,8 @@ class RelationPredictor(nn.Module):
             self.node_embeddings_bias = nn.Parameter(torch.zeros(1, nemb))
             init = select_w_init(encoder_w_init)
             init(self.node_embeddings)
+
+        if nfeat is None:
             nfeat = self.nemb
 
         self.rgc1 = RelationalGraphConvolutionRP(
@@ -83,7 +85,7 @@ class RelationPredictor(nn.Module):
             )
 
         # Decoder
-        out_feat = nhid2 if rgcn_layers == 2 else nhid1
+        out_feat = nemb  # TODO sort this out
         self.scoring_function = DistMult(nrel, out_feat, nnodes, nrel, decoder_w_init, decoder_gain, decoder_b_init)
 
     def compute_penalty(self, batch, x):
@@ -187,86 +189,30 @@ class NodeClassifier(nn.Module):
 ######################################################################################
 
 
-class CompressionRelationPredictor(nn.Module):
+class CompressionRelationPredictor(RelationPredictor):
     """ Relation prediction model with a bottleneck architecture within the encoder and DistMult decoder """
     def __init__(self,
-                 triples=None,
                  nnodes=None,
                  nrel=None,
                  nfeat=None,
                  encoder_config=None,
                  decoder_config=None):
-        super(CompressionRelationPredictor, self).__init__()
 
-        # Encoder config
         nhid = encoder_config["hidden1_size"] if "hidden1_size" in encoder_config else None
-        nemb = encoder_config["embedding_size"] if "embedding_size" in encoder_config else None
-        rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
-        edge_dropout = encoder_config["edge_dropout"] if "edge_dropout" in encoder_config else None
-        decomposition = encoder_config["decomposition"] if "decomposition" in encoder_config else None
-        rgcn_layers = encoder_config["num_layers"] if "num_layers" in encoder_config else 2
-        self.rgcn_layers = rgcn_layers
-        encoder_w_init = encoder_config["weight_init"] if "weight_init" in encoder_config else None
-        encoder_b_init = encoder_config["bias_init"] if "bias_init" in encoder_config else None
+        nemb = encoder_config["node_embedding"] if "node_embedding" in encoder_config else None
+        nfeat = nhid
 
-        # Decoder config
-        decoder_w_init = decoder_config["weight_init"] if "weight_init" in decoder_config else None
-        decoder_b_init = decoder_config["bias_init"] if "bias_init" in decoder_config else None
+        super(CompressionRelationPredictor, self) \
+            .__init__(nnodes, nrel, nfeat, encoder_config, decoder_config)
 
-        assert 0 < rgcn_layers < 3, "Only supports the following number of convolution layers: 1 and 2."
-
-        # Encoder
-        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
         self.encoding_layer = torch.nn.Linear(nemb, nhid)
-        self.rgc1 = RelationalGraphConvolutionRP(
-            num_nodes=nnodes,
-            num_relations=nrel * 2 + 1,
-            in_features=nhid,
-            out_features=nhid,
-            edge_dropout=edge_dropout,
-            decomposition=decomposition,
-            vertical_stacking=False,
-            w_init=encoder_w_init,
-            b_init=encoder_b_init
-        )
-        if rgcn_layers == 2:
-            self.rgc2 = RelationalGraphConvolutionRP(
-                num_nodes=nnodes,
-                num_relations=nrel * 2 + 1,
-                in_features=nhid,
-                out_features=nhid,
-                edge_dropout=edge_dropout,
-                decomposition=decomposition,
-                vertical_stacking=True,
-                w_init=encoder_w_init,
-                b_init=encoder_b_init
-            )
         self.decoding_layer = torch.nn.Linear(nhid, nemb)
-        # Decoder
-        self.relations = nn.Parameter(torch.FloatTensor(nrel, nemb))
 
-        # Initialise Parameters
-        init = select_w_init(encoder_w_init)
-        init(self.node_embeddings)
-        init = select_w_init(decoder_w_init)
-        init(self.node_embeddings)
+    def forward(self, graph, triples):
+        """ Embed relational graph and then compute score """
 
-    def distmult_score(self, triples, nodes, relations):
-        """ Simple DistMult scoring function (from https://arxiv.org/pdf/1412.6575.pdf) """
-
-        s = triples[:, 0]
-        p = triples[:, 1]
-        o = triples[:, 2]
-        s, p, o = nodes[s, :], relations[p, :], nodes[o, :]
-
-        scores = (s * p * o).sum(dim=1)
-
-        return scores.view(-1)
-
-    def forward(self, graph, all_triples):
-        """ Embed relational graph and then compute class probabilities """
-
-        x = self.node_embeddings
+        x = self.node_embeddings + self.node_embeddings_bias
+        x = torch.nn.functional.relu(x)
 
         x = self.encoding_layer(x)
 
@@ -278,8 +224,9 @@ class CompressionRelationPredictor(nn.Module):
 
         x = self.node_embeddings + self.decoding_layer(x)
 
-        scores = self.distmult_score(all_triples, x, self.relations)
-        return scores
+        scores = self.scoring_function(triples, x)
+        penalty = self.compute_penalty(triples, x)
+        return scores, penalty
 
 
 class EmbeddingNodeClassifier(NodeClassifier):
