@@ -1,5 +1,5 @@
 dataset:
-  name: FB15k
+  name: FB-toy
 
 training:
   epochs: 400  # Limit the number of training epochs
