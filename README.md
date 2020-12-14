@@ -3,7 +3,7 @@
 Torch-RGCN is a PyTorch implementation of the RGCN, originally proposed by Schlichtkrull *et al.* in  
 [Modeling Relational Data with Graph Convolutional Networks](https://arxiv.org/abs/1703.06103).
  
-In our workshop paper, we reproduce the relation prediction  and node classification experiments from the original 
+In our workshop paper, we reproduce the relation prediction  and entity classification experiments from the original 
 paper and furthermore, present RGCN extensions.Our workshop paper: [#TODO: Upload paper to Arxiv]
 
 ## Getting started
@@ -31,15 +31,121 @@ The hyper-parameters for the different experiments can be found in [YAML](https:
 * `rgcn` - Standard RGCN Model 
 * `c-rgcn` - Compression RGCN Model 
 * `e-rgcn` - Embedding RGCN Model
-* `g-rgcn` - Global Readout RGCN Model
 
 ### Experiments
 * `rp` - Relation Prediction
-* `nc` - Node Classification 
+* `nc` - Entity Classification 
 
 ### Datasets
 
 #### Relation Prediction 
+
+ * `AIFB`  
+ * `MUTAG` 
+ * `BGS` 
+ * `AM` 
+
+#### Entity Classification
+ 
+ * `WN18`  
+ * `FB15K` 
+ * `FB15K-237`
+
+## Part 1: Experiment Reproduction  
+
+### Relation Prediction 
+
+Original Relation Prediction Implementation: https://github.com/MichSchli/RelationPrediction 
+
+To run the relation prediction experiment using the RGCN model using:
+
+`python experiments/predict_relations.py with configs/rgcn/rp-{DATASET}.yaml`
+
+Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
+
+### Entity Classification
+
+Original Entity Classification Implementation: https://github.com/tkipf/relational-gcn
+
+To run the entity classification experiment using the RGCN model using:
+
+`python experiments/classify_entities.py with configs/rgcn/nc-{DATASET}.yaml`
+
+Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
+
+## Part 2: New Configurations 
+
+### RGCN with Entity Embeddings 
+
+To run the entity classification experiment use: 
+
+`python experiments/classify_entities.py with configs/e-rgcn/rp-{DATASET}.yaml`
+
+Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
+
+### RGCN with Compressed Entity Embeddings
+
+To run the relation prediction experiment use: 
+
+`python experiments/predict_relations.py with configs/c-rgcn/rp-{DATASET}.yaml`
+
+Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
+
+
+## Model Performance
+
+### Part 1: Reproduction Experiments
+
+#### Relation Prediction  using a standard RGCN
+
+| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
+| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
+| FB15k                         | -                                | -                      | -                       | -                       |
+| FB15k-237                     | -                                | -                      | -                       | -                       |
+| WN18                          | -                                | -                      | -                       | -                       |
+
+#### Entity Classification using a standard RGCN
+
+| Dataset                       | Accuracy                         |
+| ----------------------------- |:--------------------------------:|
+| AIFB                          | -                                |
+| AM                            | -                                |
+| BGS                           | -                                |
+| MUTAG                         | -                                |
+
+### Part 2: New Configurations
+
+#### Entity Classification using an e-RGCN
+
+| Dataset                       | Accuracy                         |
+| ----------------------------- |:--------------------------------:|
+| AIFB                          | -                                |
+| AM                            | -                                |
+| BGS                           | -                                |
+| MUTAG                         | -                                |
+
+#### Relation Prediction using a c-RGCN
+
+| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
+| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
+| FB15k                         | -                                | -                      | -                       | -                       |
+| FB15k-237                     | -                                | -                      | -                       | -                       |
+| WN18                          | -                                | -                      | -                       | -                       |
+
+
+## Citing Our Code 
+
+If you use our implementation in your own work, you may cite our paper as
+
+```
+[ #TODO: INSERT PAPER BIBTEX CITATION ]
+```
+
+---
+
+#### Dataset References
+
+##### Relation Prediction 
 
  * `AIFB` from 
  Stephan Bloehdorn and York Sure. 
@@ -59,7 +165,7 @@ de Boer, V., Wielemaker, J., van Gent, J., Hildebrand, M., Isaac, A., van Ossen-
 *[Supporting linked data production for cultural heritageinstitutes: The amsterdam museum case study](https://link.springer.com/content/pdf/10.1007%2F978-3-642-30284-8_56.pdf).* 
 In The Semantic Web: Research and Applications, 2012.
 
-#### Node Classification
+##### Entity Classification
  
  * `WN18` from 
  Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
@@ -75,128 +181,3 @@ In The Semantic Web: Research and Applications, 2012.
  Kristina Toutanova and Danqi Chen.
  *[Observed versus latent features for knowledge base and text inference](https://www.aclweb.org/anthology/W15-4007.pdf).*
  In Proceedings of the 3rd Workshop on Continuous Vector Space Models and their Compositionality (CVSC@ACL), 2015.
-
-## Part 1: Experiment Reproduction  
-
-### Relation Prediction 
-
-Original Relation Prediction Implementation: https://github.com/MichSchli/RelationPrediction 
-
-To run the relation prediction experiment using the RGCN model using:
-
-`python experiments/predict_links.py with configs/rgcn/rp-{DATASET}.yaml`
-
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
-
-### Node Classification
-
-Original Node Classification Implementation: https://github.com/tkipf/relational-gcn
-
-To run the node classification experiment using the RGCN model using:
-
-`python experiments/classify_nodes.py with configs/rgcn/nc-{DATASET}.yaml`
-
-Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
-
-## Part 2: New Configurations 
-
-### RGCN with Node Embeddings 
-
-To run the node classification experiment use: 
-
-`python experiments/classify_nodes.py with configs/e-rgcn/rp-{DATASET}.yaml`
-
-Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
-
-### RGCN with Compressed Feature Matrix 
-
-To run the relation prediction experiment use: 
-
-`python experiments/predict_links.py with configs/c-rgcn/rp-{DATASET}.yaml`
-
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
-
-### RGCN with Global Readouts
-
-To run the node classification experiment use:
-
-`python experiments/classify_nodes.py with configs/g-rgcn/rp-{DATASET}.yaml`
-
-Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
-
-
-## Model Performance
-
-### Part 1: Reproduction Experiments
-
-#### Relation Prediction  using standard RGCN
-
-| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
-| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
-| FB15k                         | -                                | -                      | -                       | -                       |
-| FB15k-237                     | -                                | -                      | -                       | -                       |
-| WN18                          | -                                | -                      | -                       | -                       |
-
-#### Node Classification using standard RGCN
-
-| Dataset                       | Accuracy                         |
-| ----------------------------- |:--------------------------------:|
-| AIFB                          | -                                |
-| AM                            | -                                |
-| BGS                           | -                                |
-| MUTAG                         | -                                |
-
-### Part 2: New Configurations
-
-#### Node Classification using e-RGCN
-
-| Dataset                       | Accuracy                         |
-| ----------------------------- |:--------------------------------:|
-| AIFB                          | -                                |
-| AM                            | -                                |
-| BGS                           | -                                |
-| MUTAG                         | -                                |
-
-#### Relation Prediction using c-RGCN
-
-| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
-| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
-| FB15k                         | -                                | -                      | -                       | -                       |
-| FB15k-237                     | -                                | -                      | -                       | -                       |
-| WN18                          | -                                | -                      | -                       | -                       |
-
-#### Node Classification using g-RGCN
-
-| Dataset                       | Accuracy                         |
-| ----------------------------- |:--------------------------------:|
-| AIFB                          | -                                |
-| AM                            | -                                |
-| BGS                           | -                                |
-| MUTAG                         | -                                |
-
-
-## Unit Tests 
-
-To run all unit tests use:
- 
-`pytest tests/test_nn.py`
-
-To run unit tests for neural network util function use:
-
-`pytest tests/test_nn.py`
-
-To run unit tests for utils functions use:
-
-`pytest tests/test_utils.py`
-
-To run unit tests for misc functions use:
-
-`pytest tests/test_misc.py`
-
-## Citing Our Code 
-
-If you use our implementation in your own work, you may cite our paper as
-
-```
-[ #TODO: INSERT PAPER BIBTEX CITATION ]
-```
