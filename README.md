@@ -4,7 +4,7 @@ Torch-RGCN is a PyTorch implementation of the RGCN, originally proposed by Schli
 [Modeling Relational Data with Graph Convolutional Networks](https://arxiv.org/abs/1703.06103).
  
 In our workshop paper, we reproduce the relation prediction  and entity classification experiments from the original 
-paper and furthermore, present RGCN extensions.Our workshop paper: [#TODO: Upload paper to Arxiv]
+paper and furthermore, present RGCN extensions.
 
 ## Getting started
 
@@ -135,7 +135,7 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k
 | WN18                          | -                                | -                      | -                       | -                       |
 
 
-## Citing Our Code 
+## Citing our Work 
 
 If you use our implementation in your own work, you may cite our paper as
 
