@@ -94,55 +94,6 @@ To run the relation prediction experiment use:
 Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
 
 
-## Model Performance
-
-### Part 1: Reproduction Experiments
-
-#### Relation Prediction  using a standard RGCN
-
-| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
-| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
-| FB15k                         | -                                | -                      | -                       | -                       |
-| FB15k-237                     | -                                | -                      | -                       | -                       |
-| WN18                          | -                                | -                      | -                       | -                       |
-
-#### Entity Classification using a standard RGCN
-
-| Dataset                       | Accuracy                         |
-| ----------------------------- |:--------------------------------:|
-| AIFB                          | -                                |
-| AM                            | -                                |
-| BGS                           | -                                |
-| MUTAG                         | -                                |
-
-### Part 2: New Configurations
-
-#### Entity Classification using an e-RGCN
-
-| Dataset                       | Accuracy                         |
-| ----------------------------- |:--------------------------------:|
-| AIFB                          | -                                |
-| AM                            | -                                |
-| BGS                           | -                                |
-| MUTAG                         | -                                |
-
-#### Relation Prediction using a c-RGCN
-
-| Dataset                       | Mean Reciprocal Rank (filtered)  | Hits@1 (filtered)      | Hits@3 (filtered)       | Hits@10 (filtered)      |
-| ----------------------------- |:--------------------------------:|:----------------------:|:-----------------------:|:-----------------------:|
-| FB15k                         | -                                | -                      | -                       | -                       |
-| FB15k-237                     | -                                | -                      | -                       | -                       |
-| WN18                          | -                                | -                      | -                       | -                       |
-
-
-## Citing our Work 
-
-If you use our implementation in your own work, you may cite our paper as
-
-```
-[ #TODO: INSERT PAPER BIBTEX CITATION ]
-```
-
 ---
 
 #### Dataset References
