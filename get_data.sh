@@ -21,6 +21,11 @@ wget "https://www.dropbox.com/sh/tburaaxij0a1vmy/AAAlD5ORzcMbF3YpoynOLGqwa?dl=1"
 unzip "data/mutag.zip" -d "data/mutag"
 echo -e "Done. \n\n"
 
+echo "Downloading FB-Toy..."
+wget "https://www.dropbox.com/sh/5kv7xk4cj1md9zw/AADpaREEK9K5NX_Vb5eRcXuRa?dl=1" -O "data/fb-toy.zip"
+unzip "data/fb-toy.zip" -d "data/fb-toy"
+echo -e "Done. \n\n"
+
 echo "Downloading FB15k..."
 wget "https://www.dropbox.com/sh/rwcku99q10jzpzs/AACe4NgdH71AYV9hG7bxYMVTa?dl=1" -O "data/fb15k.zip"
 unzip "data/fb15k.zip" -d "data/fb15k"

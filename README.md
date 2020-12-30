@@ -50,6 +50,7 @@ The hyper-parameters for the different experiments can be found in [YAML](https:
 #### Entity Classification
  
  * `WN18`  
+ * `FB-Toy`
  * `FB15K` 
  * `FB15K-237`
 
@@ -173,8 +174,10 @@ In The Semantic Web: Research and Applications, 2012.
  Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
  *[Translating embeddings for modeling multi-relational data](http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-rela)*.
  In Advances in Neural Information Processing Systems, 2013. 
- *[Convolutional  2D knowledge graph embeddings](https://arxiv.org/abs/1707.01476).*
- In Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence (AAAI), 2018. 
+ * `FB-Toy` from 
+ Daniel Ruffinelli, Samuel Broscheit, and Rainer Gemulla. 
+ *[You CAN teach an old dog new tricks! on training knowledge graph embeddings](https://openreview.net/pdf?id=BkxSmlBFvr)*.
+ In International Conference on Learning Representations, 2019. 
  * `FB15K` from 
  Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
  *[Translating embeddings for modeling multi-relational data](http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-rela).*
