@@ -67,8 +67,6 @@ def train_model(dataset,
     elif rgcn["model"] == 'g-rgcn':
         model = GlobalNodeClassifier
     elif rgcn["model"] == 'e-rgcn':
-        model = EmbeddingNodeClassifier
-    elif rgcn["model"] == 'nh-rgcn':
         model = NoHiddenEmbeddingNodeClassifier
     else:
         raise NotImplementedError(f'\'{rgcn["model"]}\' model has not been implemented!')

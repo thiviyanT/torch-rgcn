@@ -1,5 +1,5 @@
 dataset:
-  name: FB15k-237
+  name: FB-toy
 
 training:
   epochs: 400  # Limit the number of training epochs
@@ -15,10 +15,9 @@ training:
 encoder:
   model: c-rgcn
   node_embedding_l2_penalty: 0.005  # l2 penalty on node embeddings
-  num_layers: 2  # Number of graph convolution layers
+  num_layers: 1  # Number of graph convolution layers
   node_embedding: 64  # Size for node and relation embedding
   hidden1_size: 10  # Size of first hidden layer - Dimension to compress node embeddings to (ideally much smaller than embedding_size)
-  hidden2_size: 10  # Size of first hidden layer - Dimension to compress node embeddings to (ideally much smaller than embedding_size)
   edge_dropout:
     general: 0.5  # Dropout rate for all edges (except self-loops)
     self_loop: 0.2  # Dropout rate for self-loops
@@ -37,6 +36,6 @@ decoder:
 evaluation:
   final_run: False  # If true, evaluates model on test set. Otherwise, validation set is used
   filtered: True  # If true, reports filtered metrics. Otherwise, raw metrics are computed
-  check_every: 50  # Evaluate relation prediction model at regular intervals (by default, every 2000 epochs)
-  batch_size: 32  # Number of triples per evaluation batch
+  check_every: 50  # Evaluate link prediction model at regular intervals (by default, every 2000 epochs)
+  batch_size: 1024  # Number of triples per evaluation batch
   verbose: True  # Show evaluation progress bar
