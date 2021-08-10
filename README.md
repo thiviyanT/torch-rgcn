@@ -3,8 +3,8 @@
 Torch-RGCN is a PyTorch implementation of the RGCN, originally proposed by Schlichtkrull *et al.* in  
 [Modeling Relational Data with Graph Convolutional Networks](https://arxiv.org/abs/1703.06103).
  
-In our workshop paper, we reproduce the relation prediction  and entity classification experiments from the original 
-paper and furthermore, present RGCN extensions.
+In our [paper](https://arxiv.org/abs/2107.10015), we reproduce the link prediction  and node classification experiments from the original 
+paper and using our reproduction we explain the RGCN. Furthermore, we present two new configurations of the RGCN. 
 
 ## Getting started
 
@@ -35,71 +35,69 @@ The hyper-parameters for the different experiments can be found in [YAML](https:
 * `e-rgcn` - Embedding RGCN Model
 
 ### Experiments
-* `rp` - Relation Prediction
-* `nc` - Entity Classification 
+* `lp` - Link Prediction
+* `nc` - Node Classification 
 
 ### Datasets
 
-#### Relation Prediction 
+#### Link Prediction
+ 
+ * `WN18`  
+ * `FB-Toy`
+
+#### Node Classification 
 
  * `AIFB`  
  * `MUTAG` 
  * `BGS` 
- * `AM` 
+ * `AM`
 
-#### Entity Classification
- 
- * `WN18`  
- * `FB-Toy`
- * `FB15K` 
- * `FB15K-237`
+## Part 1: Reproduction  
 
-## Part 1: Experiment Reproduction  
+### Link Prediction 
 
-### Relation Prediction 
+Original Link Prediction Implementation: https://github.com/MichSchli/RelationPrediction 
 
-Original Relation Prediction Implementation: https://github.com/MichSchli/RelationPrediction 
+To run the link prediction experiment using the RGCN model using:
 
-To run the relation prediction experiment using the RGCN model using:
+`python experiments/predict_links.py with configs/rgcn/lp-{DATASET}.yaml`
 
-`python experiments/predict_relations.py with configs/rgcn/rp-{DATASET}.yaml`
+Make sure to replace `{DATASET}` with one of the following dataset names: `FB-toy` or `WN18`.
 
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
+### Node Classification
 
-### Entity Classification
+Original Node Classification Implementation: https://github.com/tkipf/relational-gcn
 
-Original Entity Classification Implementation: https://github.com/tkipf/relational-gcn
+To run the node classification experiment using the RGCN model using:
 
-To run the entity classification experiment using the RGCN model using:
-
-`python experiments/classify_entities.py with configs/rgcn/nc-{DATASET}.yaml`
+`python experiments/classify_nodes.py with configs/rgcn/nc-{DATASET}.yaml`
 
 Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
-## Part 2: New Configurations 
+## Part 2: New RGCN Configurations 
 
 ### RGCN with Entity Embeddings 
 
-To run the entity classification experiment use: 
+To run the node classification experiment use: 
 
-`python experiments/classify_entities.py with configs/e-rgcn/rp-{DATASET}.yaml`
+`python experiments/classify_nodes.py with configs/e-rgcn/nc-{DATASET}.yaml`
 
 Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
 ### RGCN with Compressed Entity Embeddings
 
-To run the relation prediction experiment use: 
+To run the link prediction experiment use: 
 
-`python experiments/predict_relations.py with configs/c-rgcn/rp-{DATASET}.yaml`
+`python experiments/predict_links.py with configs/c-rgcn/lp-{DATASET}.yaml`
 
-Make sure to replace `{DATASET}` with one of the following dataset names: `FB15k`, `FB15k-237` or `WN18`.
+Make sure to replace `{DATASET}` with one of the following dataset names: `FB-toy`, or `WN18`.
 
 
 ---
 
 #### Dataset References
 
-##### Relation Prediction 
+##### Link Prediction 
 
  * `AIFB` from 
  Stephan Bloehdorn and York Sure. 
@@ -119,7 +117,7 @@ de Boer, V., Wielemaker, J., van Gent, J., Hildebrand, M., Isaac, A., van Ossen-
 *[Supporting linked data production for cultural heritageinstitutes: The amsterdam museum case study](https://link.springer.com/content/pdf/10.1007%2F978-3-642-30284-8_56.pdf).* 
 In The Semantic Web: Research and Applications, 2012.
 
-##### Entity Classification
+##### Node Classification
  
  * `WN18` from 
  Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
@@ -129,11 +127,4 @@ In The Semantic Web: Research and Applications, 2012.
  Daniel Ruffinelli, Samuel Broscheit, and Rainer Gemulla. 
  *[You CAN teach an old dog new tricks! on training knowledge graph embeddings](https://openreview.net/pdf?id=BkxSmlBFvr)*.
  In International Conference on Learning Representations, 2019. 
- * `FB15K` from 
- Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
- *[Translating embeddings for modeling multi-relational data](http://papers.nips.cc/paper/5071-translating-embeddings-for-modeling-multi-rela).*
- In Advances in Neural Information Processing Systems, 2013.
- * `FB15K-237` from 
- Kristina Toutanova and Danqi Chen.
- *[Observed versus latent features for knowledge base and text inference](https://www.aclweb.org/anthology/W15-4007.pdf).*
- In Proceedings of the 3rd Workshop on Continuous Vector Space Models and their Compositionality (CVSC@ACL), 2015.
+ 
