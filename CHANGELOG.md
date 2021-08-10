@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 --->
 
-## [0.1.0] - 2020/12/18 [#TODO: Update release date]
+## [1.0.0] - 2021/07/21 
 Initial public release of Torch-RGCN. 
 
 ### Added
@@ -26,8 +26,8 @@ Initial public release of Torch-RGCN.
 - Added setup.sh.
 - Added CHANGELOG.
 - Added LICENSE.
-- Added AIFB, AM, BGS, FB15k, FB15k-237, MUTAG and WN18 to data.
+- Added AIFB, AM, BGS, MUTAG, FB-toy and WN18 to data.
 - Added unit tests under [tests](tests).
-- Added scripts for node classification and relation Prediction  under [experiments](experiments).
-- Added hyper-parameters under [configs](configs).
+- Added scripts for node classification and link prediction  under [experiments](experiments).
+- Added hyperparameters under [configs](configs).
 - Added RGCN module under [torch-rgcn](torch-rgcn).
