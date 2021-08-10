@@ -26,16 +26,6 @@ wget "https://www.dropbox.com/sh/5kv7xk4cj1md9zw/AADpaREEK9K5NX_Vb5eRcXuRa?dl=1"
 unzip "data/fb-toy.zip" -d "data/fb-toy"
 echo -e "Done. \n\n"
 
-echo "Downloading FB15k..."
-wget "https://www.dropbox.com/sh/rwcku99q10jzpzs/AACe4NgdH71AYV9hG7bxYMVTa?dl=1" -O "data/fb15k.zip"
-unzip "data/fb15k.zip" -d "data/fb15k"
-echo -e "Done. \n\n"
-
-echo "Downloading FB15k-237..."
-wget "https://www.dropbox.com/sh/b7c72uv9jmbwm7v/AABkasD__OutmGY0VZH7ZVBoa?dl=1" -O "data/fB15k-237.zip"
-unzip "data/fB15k-237.zip" -d "data/fB15k-237"
-echo -e "Done. \n\n"
-
 echo "Downloading WN18..."
 wget "https://www.dropbox.com/sh/egwgth011epusq7/AABWx1YWuEaMoumHDOknbCA9a?dl=1" -O "data/wn18.zip"
 unzip "data/wn18.zip" -d "data/wn18"
