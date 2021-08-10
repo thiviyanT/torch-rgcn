@@ -56,6 +56,8 @@ The hyper-parameters for the different experiments can be found in [YAML](https:
 
 ### Link Prediction 
 
+![Link Prediction Model](images/link-prediction.png)
+
 Original Link Prediction Implementation: https://github.com/MichSchli/RelationPrediction 
 
 To run the link prediction experiment using the RGCN model using:
@@ -65,6 +67,8 @@ To run the link prediction experiment using the RGCN model using:
 Make sure to replace `{DATASET}` with one of the following dataset names: `FB-toy` or `WN18`.
 
 ### Node Classification
+
+![Node Classification Model](images/node-classification.png)
 
 Original Node Classification Implementation: https://github.com/tkipf/relational-gcn
 
@@ -85,6 +89,8 @@ To run the node classification experiment use:
 Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
 ### RGCN with Compressed Entity Embeddings
+
+![c-RGCN Link Prediction Model](images/link-prediction-compression.png)
 
 To run the link prediction experiment use: 
 
