@@ -60,6 +60,13 @@ class DistMult(Module):
         else:
             init(self.relations)
 
+        # Checkpoint 6
+        # print('min', torch.min(self.relations))
+        # print('max', torch.max(self.relations))
+        # print('mean', torch.mean(self.relations))
+        # print('std', torch.std(self.relations))
+        # print('size', self.relations.size())
+
         # Biases
         if self.b_init:
             init = select_b_init(self.b_init)
@@ -317,7 +324,7 @@ class RelationalGraphConvolution(Module):
 
 class RelationalGraphConvolutionRP(Module):
     """
-    Relational Graph Convolution (RGC) Layer for Relation Prediction
+    Relational Graph Convolution (RGC) Layer for Link Prediction
     (as described in https://arxiv.org/abs/1703.06103)
     """
 
@@ -351,8 +358,8 @@ class RelationalGraphConvolutionRP(Module):
 
         self.num_nodes = num_nodes
         self.num_relations = num_relations
-        self.in_features = in_dim  # TODO in_dim
-        self.out_features = out_dim  # TODO out_dim
+        self.in_features = in_dim
+        self.out_features = out_dim
         self.weight_decomp = weight_decomp
         self.num_bases = num_bases
         self.num_blocks = num_blocks
@@ -448,7 +455,19 @@ class RelationalGraphConvolutionRP(Module):
                     return tensor.normal_(0.0, std)
 
             schlichtkrull_normal_(self.blocks, shape=[(self.num_relations-1)//2, self.in_features//self.num_blocks], gain=gain)
+            # Checkpoint 3
+            # print('min', torch.min(self.blocks))
+            # print('max', torch.max(self.blocks))
+            # print('mean', torch.mean(self.blocks))
+            # print('std', torch.std(self.blocks))
+            # print('size', self.blocks.size())
             schlichtkrull_normal_(self.blocks_self, shape=[(self.num_relations-1)//2, self.in_features//self.num_blocks], gain=gain)
+            # Checkpoint 4
+            # print('min', torch.min(self.blocks_self))
+            # print('max', torch.max(self.blocks_self))
+            # print('mean', torch.mean(self.blocks_self))
+            # print('std', torch.std(self.blocks_self))
+            # print('size', self.blocks_self.size())
         elif self.weight_decomp == 'basis':
             init(self.bases, gain=gain)
             init(self.comps, gain=gain)
@@ -570,5 +589,12 @@ class RelationalGraphConvolutionRP(Module):
 
         if self.bias is not None:
             output = torch.add(output, self.bias)
+
+        # Checkpoint 5
+        # print('min', torch.min(output))
+        # print('max', torch.max(output))
+        # print('mean', torch.mean(output))
+        # print('std', torch.std(output))
+        # print('size', output.size())
 
         return output
