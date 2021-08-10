@@ -8,13 +8,13 @@ import time
 from utils.misc import evaluate, generate_true_dict
 
 """ 
-Relational Graph Convolution Network for relation prediction . 
+Relational Graph Convolution Network for link prediction . 
 Reproduced as described in https://arxiv.org/abs/1703.06103 (Section 4).
 """
 
 
 # Create sacred object for experiment tracking
-ex = create_experiment(name='R-GCN Relation Prediction ', database='link_pred')
+ex = create_experiment(name='R-GCN Link Prediction ', database='link_pred')
 
 
 @ex.automain
@@ -59,8 +59,7 @@ def train(dataset,
         if "node_embedding" in encoder:
             block_size = encoder["node_embedding"] / encoder["decomposition"]["num_blocks"]
         else:
-            # TODO
-            raise NotImplementedError()
+            raise ValueError()
 
         while len(nodes) % block_size != 0:
             label = 'null' + str(added)
