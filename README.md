@@ -80,7 +80,7 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`
 
 ## Part 2: New RGCN Configurations 
 
-### RGCN with Entity Embeddings 
+### Node Classification with Node Embeddings 
 
 To run the node classification experiment use: 
 
@@ -88,7 +88,7 @@ To run the node classification experiment use:
 
 Make sure to replace `{DATASET}` with one of the following dataset names: `AIFB`, `MUTAG`, `BGS` or `AM`.
 
-### RGCN with Compressed Entity Embeddings
+### Link Prediction Compressed Node Embeddings
 
 ![c-RGCN Link Prediction Model](images/link-prediction-compression.png)
 
