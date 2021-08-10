@@ -4,13 +4,15 @@ import torch.nn.functional as F
 from torch import nn
 import torch
 
+torch.set_printoptions(precision=5)
+
 ######################################################################################
 # Models for Experiment Reproduction
 ######################################################################################
 
 
 class RelationPredictor(nn.Module):
-    """ Relation Prediction via RGCN encoder and DistMult decoder """
+    """ Link Prediction via RGCN encoder and DistMult decoder """
     def __init__(self,
                  nnodes=None,
                  nrel=None,
@@ -54,6 +56,13 @@ class RelationPredictor(nn.Module):
             self.node_embeddings_bias = nn.Parameter(torch.zeros(1, nemb))
             init = select_w_init(encoder_w_init)
             init(self.node_embeddings)
+            # Checkpoint 1
+            print('self.node_embeddings')
+            # print('min', torch.min(self.node_embeddings))
+            # print('max', torch.max(self.node_embeddings))
+            # print('mean', torch.mean(self.node_embeddings))
+            # print('std', torch.std(self.node_embeddings))
+            # print('size', self.node_embeddings.size())
 
         if nfeat is None:
             nfeat = self.nemb
@@ -105,6 +114,12 @@ class RelationPredictor(nn.Module):
         if self.nemb is not None:
             x = self.node_embeddings + self.node_embeddings_bias
             x = torch.nn.functional.relu(x)
+            # Checkpoint 1
+            # print('min', torch.min(x))
+            # print('max', torch.max(x))
+            # print('mean', torch.mean(x))
+            # print('std', torch.std(x))
+            # print('size', x.size())
             x = self.rgc1(graph, features=x)
         else:
             x = self.rgc1(graph)
@@ -114,6 +129,13 @@ class RelationPredictor(nn.Module):
             x = self.rgc2(graph, features=x)
 
         scores = self.scoring_function(triples, x)
+        # Checkpoint 7
+        print('min', torch.min(scores))
+        print('max', torch.max(scores))
+        print('mean', torch.mean(scores))
+        print('std', torch.std(scores))
+        print('size', scores.size())
+        exit()
         penalty = self.compute_penalty(triples, x)
         return scores, penalty
 
@@ -185,12 +207,12 @@ class NodeClassifier(nn.Module):
 
 
 ######################################################################################
-# RGCN Extensions
+# New Configurations of the RGCN
 ######################################################################################
 
 
 class CompressionRelationPredictor(RelationPredictor):
-    """ Relation prediction model with a bottleneck architecture within the encoder and DistMult decoder """
+    """ Link prediction model with a bottleneck architecture within the encoder and DistMult decoder """
     def __init__(self,
                  nnodes=None,
                  nrel=None,
@@ -246,48 +268,10 @@ class EmbeddingNodeClassifier(NodeClassifier):
         assert nemb is not None, "Size of node embedding not specified!"
         nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
 
-        super(EmbeddingNodeClassifier, self)\
-            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition)
-
-        # Node embeddings
-        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
-
-        # Initialise Parameters
-        init = select_w_init('glorot-uniform')
-        init(self.node_embeddings)
-
-    def forward(self):
-        """ Embed relational graph and then compute class probabilities """
-        x = self.rgc1(self.node_embeddings)
-
-        if self.nlayers == 2:
-            x = F.relu(x)
-            x = self.rgc2(features=x)
-
-        return x
-
-
-class NoHiddenEmbeddingNodeClassifier(NodeClassifier):
-    """ No-hidden Node classification model with node embeddings as the feature matrix """
-    def __init__(self,
-                 triples=None,
-                 nnodes=None,
-                 nrel=None,
-                 nfeat=None,
-                 nhid=16,
-                 nlayers=2,
-                 nclass=None,
-                 edge_dropout=None,
-                 decomposition=None,
-                 nemb=None):
-
-        assert nemb is not None, "Size of node embedding not specified!"
-        nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
-
         assert nlayers == 2, "For this model only 2 layers are normally configured (for now)"
         nhid = nemb
 
-        super(NoHiddenEmbeddingNodeClassifier, self)\
+        super(EmbeddingNodeClassifier, self)\
             .__init__(triples, nnodes, nrel, nfeat, nhid, 1, nclass, edge_dropout, decomposition)
 
         # This model has a custom first layer
@@ -314,50 +298,5 @@ class NoHiddenEmbeddingNodeClassifier(NodeClassifier):
         # Normally there will be checked if the desired number of layers is 2, but this model implies it (for now).
         x = F.relu(x)
         x = self.rgc1(features=x)
-
-        return x
-
-
-class GlobalNodeClassifier(NodeClassifier):
-    """ Node classification model with global readouts """
-    def __init__(self,
-                 triples=None,
-                 nnodes=None,
-                 nrel=None,
-                 nfeat=None,
-                 nhid=16,
-                 nlayers=2,
-                 nclass=None,
-                 edge_dropout=None,
-                 decomposition=None,
-                 nemb=None):
-
-        assert nemb is not None, "Size of node embedding not specified!"
-        nfeat = nemb  # Configure RGCN to accept node embeddings as feature matrix
-
-        super(GlobalNodeClassifier, self)\
-            .__init__(triples, nnodes, nrel, nfeat, nhid, nlayers, nclass, edge_dropout, decomposition)
-
-        # Node embeddings
-        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
-
-        # Initialise Parameters
-        init = select_w_init('glorot-uniform')
-        init(self.node_embeddings)
-
-    def forward(self):
-        """ Embed relational graph and then compute class probabilities """
-
-        x = self.node_embeddings
-
-        x = x + x.mean(dim=0, keepdim=True)
-
-        x = self.rgc1(features=x)
-
-        x = x + x.mean(dim=0, keepdim=True)
-
-        if self.nlayers == 2:
-            x = F.relu(x)
-            x = self.rgc2(features=x)
 
         return x
