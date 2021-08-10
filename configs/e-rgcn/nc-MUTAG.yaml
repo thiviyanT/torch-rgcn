@@ -11,7 +11,7 @@ training:
   use_cuda: True  # If true, model is trained on GPU
 
 rgcn:
-  model: nh-rgcn
+  model: e-rgcn
   num_layers: 2  # Number of graph convolution layers
   node_embeddings: 32  # Size of node embeddings
 
