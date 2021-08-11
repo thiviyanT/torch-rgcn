@@ -8,7 +8,7 @@ import os
 
 
 def create_experiment(name='exp', database=None):
-    """ Create Scared experiment object for experiment logging """
+    """ Create Scared experiment object for tracking experiments """
     ex = Experiment(name)
 
     atlas_user = os.environ.get('MONGO_DB_USER')
@@ -23,7 +23,7 @@ def create_experiment(name='exp', database=None):
     return ex
 
 #######################################################################################################################
-# Relation Prediction Utils
+# Link Prediction Utils
 #######################################################################################################################
 
 def generate_true_dict(all_triples):
@@ -36,18 +36,17 @@ def generate_true_dict(all_triples):
 
     return heads, tails
 
-def filter_scores_(scores, batch, true_triples, head=True):
-    """ Filters a score matrix by setting the scores of known non-target true triples to -inf """
+def filter_scores(scores, batch, true_triples, head=True):
+    """ Filters a score matrix by setting the scores of known non-target true triples to -infinity """
 
-    # TODO Clean this up
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    indices = [] # indices of triples whose scores should be set to -infty
+    indices = [] # indices of triples whose scores should be set to -infinity
 
     heads, tails = true_triples
 
     for i, (s, p, o) in enumerate(batch):
-        s, p, o = triple = (s.item(), p.item(), o.item())
+        s, p, o = (s.item(), p.item(), o.item())
         if head:
             indices.extend([(i, si) for si in heads[p, o] if si != s])
         else:
@@ -61,7 +60,6 @@ def filter_scores_(scores, batch, true_triples, head=True):
 def evaluate(model, graph, test_set, true_triples, num_nodes, batch_size=16, hits_at_k=[1, 3, 10], filter_candidates=True, verbose=True):
     """ Evaluates a triple scoring model. Does the sorting in a single, GPU-accelerated operation. """
 
-    # TODO Clean this up
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     rng = tqdm.trange if verbose else range
@@ -90,7 +88,7 @@ def evaluate(model, graph, test_set, true_triples, num_nodes, batch_size=16, hit
 
             # filter out the true triples that aren't the target
             if filter_candidates:
-                filter_scores_(scores, batch, true_triples, head=head)
+                filter_scores(scores, batch, true_triples, head=head)
 
             # Select the true scores, and count the number of values larger than than
             true_scores = scores[torch.arange(bn, device=device), targets]
@@ -125,9 +123,8 @@ def uniform_sampling(graph, sample_size=30000, entities=None, train_triplets=Non
     return sample(graph, sample_size)
 
 def edge_neighborhood(train_triples, sample_size=30000, entities=None):
-    """Edge neighborhood sampling"""
+    """ Edge neighborhood sampling """
 
-    # TODO: Clean this up
     entities = {v: k for k, v in entities.items()}
     adj_list = [[] for _ in entities]
     for i, triplet in enumerate(train_triples):
@@ -172,11 +169,10 @@ def edge_neighborhood(train_triples, sample_size=30000, entities=None):
         seen[other_vertex] = True
 
     edges = [train_triples[e] for e in edges]
-
     return edges
 
-def corrupt(batch, num_nodes, head_corrupt_prob, device='cpu'):
-    """Corrupts the negatives of a batch of triples. Randomly corrupts either heads or tails."""
+def negative_sampling(batch, num_nodes, head_corrupt_prob, device='cpu'):
+    """ Samples negative examples in a batch of triples. Randomly corrupts either heads or tails."""
     bs, ns, _ = batch.size()
 
     # new entities to insert
@@ -191,54 +187,3 @@ def corrupt(batch, num_nodes, head_corrupt_prob, device='cpu'):
     batch[mask] = corruptions
 
     return batch.view(bs * ns, -1)
-
-def negative_sampling(positive_triples, entity_dictionary, neg_sample_rate):
-    """ Generates a set of negative samples by corrupting triples """
-
-    all_triples = np.array(positive_triples)
-    s = np.resize(all_triples[:, 0], (len(positive_triples)*neg_sample_rate,))
-    p = np.resize(all_triples[:, 1], (len(positive_triples)*neg_sample_rate,))
-    o = np.random.randint(low=0, high=len(entity_dictionary), size=(len(positive_triples)*neg_sample_rate,))
-    negative_triples = np.stack([s, p, o], axis=1)
-
-    return negative_triples.tolist()
-
-def corrupt_heads(entity_dictionary, p, o):
-    """ Generate a list of candidate triples by replacing the head with every entity for each test triplet """
-    return [(s, p, o) for s in range(len(entity_dictionary))]
-
-def corrupt_tails(s, p, entity_dictionary):
-    """ Generate a list of candidate triples by replacing the tail with every entity for each test triplet """
-    return [(s, p, o) for o in range(len(entity_dictionary))]
-
-def filter_triples(candidate_triples, all_triples, correct_triple):
-    """ Filter out candidate_triples that are present in all_triples, but keep correct_triple """
-    return [triple for triple in set(candidate_triples) if not triple in all_triples or triple == correct_triple]
-
-def compute_mrr(rank):
-    """ Compute Mean Reciprocal Rank for a given list of ranked triples """
-    return 1.0/rank
-
-def compute_hits(rank, k):
-    """ Compute Precision at K for a given list of ranked triples """
-    if k == 1:
-        return 1 if rank == k else 0
-    else:
-        return 1 if rank <= k else 0
-
-def rank_triple(scores, candidate_triples, correct_triple):
-    """ Finds rank of the correct triple after sorting candidates by their scores """
-    sorted_candidates = [tuple(i[0]) for i in sorted(zip(candidate_triples.tolist(), scores.tolist()), key=lambda i: -i[1])]
-    rank = sorted_candidates.index(correct_triple) + 1
-    return rank
-
-def compute_metrics(scores, candidates, correct_triple, k=None):
-    """ Returns MRR and Hits@k (k=1,3,10) values for a given triple prediction """
-    if k is None:
-        k = [1, 3, 10]
-
-    rank = rank_triple(scores, candidates, correct_triple)
-    mrr = compute_mrr(rank)
-    hits_at_k = { i:compute_hits(rank, i) for i in k }
-
-    return mrr, hits_at_k
