@@ -1,14 +1,12 @@
 from utils.misc import *
-from torch_rgcn.models import RelationPredictor, CompressionRelationPredictor
+from torch_rgcn.models import LinkPredictor, CompressionRelationPredictor
 from utils.data import load_link_prediction_data
 import torch.nn.functional as F
 import torch
 import time
 
-from utils.misc import evaluate, generate_true_dict
-
 """ 
-Relational Graph Convolution Network for link prediction . 
+Relational Graph Convolution Network for link prediction. 
 Reproduced as described in https://arxiv.org/abs/1703.06103 (Section 4).
 """
 
@@ -77,7 +75,7 @@ def train(dataset,
     test = torch.tensor(test, dtype=torch.long, device=torch.device('cpu'))  # Note: Evaluation is performed on the CPU
 
     if encoder["model"] == 'rgcn':
-        model = RelationPredictor
+        model = LinkPredictor
     elif encoder["model"] == 'c-rgcn':
         model = CompressionRelationPredictor
     else:
@@ -133,7 +131,7 @@ def train(dataset,
             positives = torch.tensor(positives, dtype=torch.long, device=device)
             # Generate negative samples triples for training
             negatives = positives.clone()[:, None, :].expand(graph_batch_size, neg_sample_rate, 3).contiguous()
-            negatives = corrupt(negatives, num_nodes, head_corrupt_prob, device=device)
+            negatives = negative_sampling(negatives, num_nodes, head_corrupt_prob, device=device)
             batch_idx = torch.cat([positives, negatives], dim=0)
 
             # Label training data (0 for positive class and 1 for negative class)
@@ -142,7 +140,7 @@ def train(dataset,
             train_lbl = torch.cat([pos_labels, neg_labels], dim=0).view(-1)
 
             graph = positives
-            # Apply edge dropout
+            # Apply edge dropout. Edge dropout to self-loops is applied separately inside the RGCN layer.
             if model.training and edge_dropout > 0.0:
                 keep_prob = 1 - edge_dropout
                 graph = graph[torch.randperm(graph.size(0))]
