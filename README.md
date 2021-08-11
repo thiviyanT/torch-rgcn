@@ -101,9 +101,9 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `FB-to
 
 ---
 
-#### Dataset References
+### Dataset References
 
-##### Link Prediction 
+#### Node Classification
 
  * `AIFB` from 
  Stephan Bloehdorn and York Sure. 
@@ -119,11 +119,11 @@ Make sure to replace `{DATASET}` with one of the following dataset names: `FB-to
  *[A fast approximation of the Weisfeiler-Lehman graph kernel for RDF data](https://link.springer.com/content/pdf/10.1007%2F978-3-642-40988-2_39.pdf).* 
  In European Conference on Machine Learning and Principles and Practice of Knowledge Discovery in Databases, 2013.
  * `AM` from 
-de Boer, V., Wielemaker, J., van Gent, J., Hildebrand, M., Isaac, A., van Ossen-bruggen, J., Schreiber, G.
+de Boer, V., Wielemaker, J., van Gent, J., Hildebrand, M., Isaac, A., van Ossenbruggen, J., Schreiber, G.
 *[Supporting linked data production for cultural heritageinstitutes: The amsterdam museum case study](https://link.springer.com/content/pdf/10.1007%2F978-3-642-30284-8_56.pdf).* 
 In The Semantic Web: Research and Applications, 2012.
 
-##### Node Classification
+#### Link Prediction
  
  * `WN18` from 
  Antoine Bordes, Nicolas Usunier, Alberto Garcia-Duran , Jason Weston, and Oksana Yakhnenko. 
