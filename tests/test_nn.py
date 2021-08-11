@@ -1,4 +1,4 @@
-from torch_rgcn.layers import RelationalGraphConvolution
+from torch_rgcn.layers import RelationalGraphConvolutionNC
 import torch
 
 
@@ -22,7 +22,7 @@ nhid = 16
 def test_no_decomposition():
     """ Unit test for when no decomposition is required """
 
-    layer1 = RelationalGraphConvolution(
+    layer1 = RelationalGraphConvolutionNC(
         triples=triples,
         num_nodes=nnodes,
         num_relations=nrel * 2 + 1,
@@ -31,7 +31,7 @@ def test_no_decomposition():
         edge_dropout=None,
         decomposition=None
     )
-    layer2 = RelationalGraphConvolution(
+    layer2 = RelationalGraphConvolutionNC(
         triples=triples,
         num_nodes=nnodes,
         num_relations=nrel * 2 + 1,
@@ -64,7 +64,7 @@ def test_basis_decomposition():
     """
     decomposition = {'type': 'basis', 'num_bases': 2}
 
-    layer1 = RelationalGraphConvolution(
+    layer1 = RelationalGraphConvolutionNC(
         triples=triples,
         num_nodes=nnodes,
         num_relations=nrel * 2 + 1,
@@ -73,7 +73,7 @@ def test_basis_decomposition():
         edge_dropout=None,
         decomposition=decomposition
     )
-    layer2 = RelationalGraphConvolution(
+    layer2 = RelationalGraphConvolutionNC(
         triples=triples,
         num_nodes=nnodes,
         num_relations=nrel * 2 + 1,
@@ -96,7 +96,7 @@ def test_block_diagonal_decomposition():
 
     decomposition = {'type': 'block', 'num_blocks': 2}
 
-    layer1 = RelationalGraphConvolution(
+    layer1 = RelationalGraphConvolutionNC(
         triples=triples,
         num_nodes=nnodes,
         num_relations=nrel * 2 + 1,
@@ -105,7 +105,7 @@ def test_block_diagonal_decomposition():
         edge_dropout=None,
         decomposition=decomposition
     )
-    layer2 = RelationalGraphConvolution(
+    layer2 = RelationalGraphConvolutionNC(
         triples=triples,
         num_nodes=nnodes,
         num_relations=nrel * 2 + 1,
