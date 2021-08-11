@@ -98,7 +98,7 @@ class DistMult(Module):
         return scores
 
 
-class RelationalGraphConvolution(Module):
+class RelationalGraphConvolutionNC(Module):
     """
     Relational Graph Convolution (RGC) Layer for Node Classification
     (as described in https://arxiv.org/abs/1703.06103)
@@ -114,9 +114,9 @@ class RelationalGraphConvolution(Module):
                  bias=True,
                  decomposition=None,
                  vertical_stacking=False,
-                 no_hidden=False,
+                 diag_weight_matrix=False,
                  reset_mode='glorot_uniform'):
-        super(RelationalGraphConvolution, self).__init__()
+        super(RelationalGraphConvolutionNC, self).__init__()
 
         assert (triples is not None or num_nodes is not None or num_relations is not None or out_features is not None), \
             "The following must be specified: triples, number of nodes, number of relations and output dimension!"
@@ -139,15 +139,13 @@ class RelationalGraphConvolution(Module):
         self.num_bases = num_bases
         self.num_blocks = num_blocks
         self.vertical_stacking = vertical_stacking
-        self.no_hidden = no_hidden
+        self.diag_weight_matrix = diag_weight_matrix
         self.edge_dropout = edge_dropout
         self.edge_dropout_self_loop = edge_dropout_self_loop
 
-        # If this flag is active, no hidden layer (with adaptive parameters) is instantiated, only identity matrices
-        # which function as a stacking mechanism for the feature matrix
-        if self.no_hidden:
+        # If this flag is active, the weight matrix is a diagonal matrix
+        if self.diag_weight_matrix:
             self.weights = torch.nn.Parameter(torch.empty((self.num_relations, self.in_features)), requires_grad=True)
-
             self.out_features = self.in_features
             self.weight_decomp = None
             bias = False
@@ -224,8 +222,7 @@ class RelationalGraphConvolution(Module):
     def forward(self, features=None):
         """ Perform a single pass of message propagation """
 
-        assert (features is None) == (self.in_features is None), \
-            "Layer has not been properly configured to take in features!"
+        assert (features is None) == (self.in_features is None), "in_features not provided!"
 
         in_dim = self.in_features if self.in_features is not None else self.num_nodes
         triples = self.triples
@@ -237,16 +234,6 @@ class RelationalGraphConvolution(Module):
         vertical_stacking = self.vertical_stacking
         general_edge_count = int((triples.size(0) - num_nodes)/2)
         self_edge_count = num_nodes
-
-        # Apply edge dropout TODO Remove edge dropout from here - Not correct to apply dropout here
-        if edge_dropout is not None and self.training:
-            assert 'general' in edge_dropout and 'self_loop' in edge_dropout, \
-                'General and self-loop edge dropouts must be specified!'
-            assert type(edge_dropout['general']) is float and 0.0 <= edge_dropout['general'] <= 1.0, \
-                "Edge dropout rates must between 0.0 and 1.0!"
-            general_edo = edge_dropout['general']
-            self_loop_edo = edge_dropout['self_loop']
-            triples = drop_edges(triples, num_nodes, general_edo, self_loop_edo)
 
         # Choose weights
         if weight_decomp is None:
@@ -264,7 +251,7 @@ class RelationalGraphConvolution(Module):
         else:
             device = 'cpu'
 
-        # Stack adjacency matrices (vertically/horizontally)
+        # Stack adjacency matrices either vertically or horizontally
         adj_indices, adj_size = stack_matrices(
             triples,
             num_nodes,
@@ -272,7 +259,6 @@ class RelationalGraphConvolution(Module):
             vertical_stacking=vertical_stacking,
             device=device
         )
-
         num_triples = adj_indices.size(0)
         vals = torch.ones(num_triples, dtype=torch.float, device=device)
 
@@ -292,25 +278,25 @@ class RelationalGraphConvolution(Module):
         else:
             adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
-        if self.no_hidden:
+        if self.diag_weight_matrix:
             assert weights.size() == (num_relations, in_dim)
         else:
             assert weights.size() == (num_relations, in_dim, out_dim)
 
         if self.in_features is None:
-            # Featureless
+            # Message passing if no features are given
             output = torch.mm(adj, weights.view(num_relations * in_dim, out_dim))
-        elif self.no_hidden:
+        elif self.diag_weight_matrix:
             fw = torch.einsum('ij,kj->kij', features, weights)
             fw = torch.reshape(fw, (self.num_relations * self.num_nodes, in_dim))
             output = torch.mm(adj, fw)
         elif self.vertical_stacking:
-            # Adjacency matrix vertically stacked
+            # Message passing if the adjacency matrix is vertically stacked
             af = torch.spmm(adj, features)
             af = af.view(self.num_relations, self.num_nodes, in_dim)
             output = torch.einsum('rio, rni -> no', weights, af)
         else:
-            # Adjacency matrix horizontally stacked
+            # Message passing if the adjacency matrix is horizontally stacked
             fw = torch.einsum('ni, rio -> rno', features, weights).contiguous()
             output = torch.mm(adj, fw.view(self.num_relations * self.num_nodes, out_dim))
 
@@ -322,7 +308,7 @@ class RelationalGraphConvolution(Module):
         return output
 
 
-class RelationalGraphConvolutionRP(Module):
+class RelationalGraphConvolutionLP(Module):
     """
     Relational Graph Convolution (RGC) Layer for Link Prediction
     (as described in https://arxiv.org/abs/1703.06103)
@@ -340,14 +326,14 @@ class RelationalGraphConvolutionRP(Module):
                  w_init='glorot-normal',
                  w_gain=False,
                  b_init=None):
-        super(RelationalGraphConvolutionRP, self).__init__()
+        super(RelationalGraphConvolutionLP, self).__init__()
 
         assert (num_nodes is not None or num_relations is not None or out_features is not None), \
             "The following must be specified: number of nodes, number of relations and output dimension!"
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        # If featureless, use number of nodes instead as input dimension
+        # If featureless, use number of nodes instead as feature input dimension
         in_dim = in_features if in_features is not None else num_nodes
         out_dim = out_features
 
@@ -440,20 +426,6 @@ class RelationalGraphConvolutionRP(Module):
         init = select_w_init(w_init)
 
         if self.weight_decomp == 'block':
-            # TODO Clean this up
-            def schlichtkrull_std(shape, gain):
-                """
-                a = \text{gain} \times \frac{3}{\sqrt{\text{fan\_in} + \text{fan\_out}}}
-                """
-                fan_in, fan_out = shape[0], shape[1]
-                return gain * 3.0 / sqrt(float(fan_in + fan_out))
-
-            def schlichtkrull_normal_(tensor, shape, gain=1.):
-                """Fill the input `Tensor` with values according to the Schlichtkrull method, using a normal distribution."""
-                std = schlichtkrull_std(shape, gain)
-                with torch.no_grad():
-                    return tensor.normal_(0.0, std)
-
             schlichtkrull_normal_(self.blocks, shape=[(self.num_relations-1)//2, self.in_features//self.num_blocks], gain=gain)
             # Checkpoint 3
             # print('min', torch.min(self.blocks))
@@ -478,18 +450,7 @@ class RelationalGraphConvolutionRP(Module):
     def forward(self, triples, features=None):
         """ Perform a single pass of message propagation """
 
-        assert (features is None) == (self.in_features is None), \
-            "Layer has not been properly configured to take in features!"
-
-        # TODO clean up this
-        if self.weight_decomp is None:
-            weights = self.weights
-        elif self.weight_decomp == 'basis':
-            weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
-        elif self.weight_decomp == 'block':
-            pass
-        else:
-            raise NotImplementedError(f'{self.weight_decomp} decomposition has not been implemented')
+        assert (features is None) == (self.in_features is None), "in_features not given"
 
         in_dim = self.in_features if self.in_features is not None else self.num_nodes
         out_dim = self.out_features
@@ -501,8 +462,17 @@ class RelationalGraphConvolutionRP(Module):
         triples = triples.to(device)
         features = features.to(device)
 
-        # TODO - clean this
-        # Edge dropout on self-loops
+        # Apply weight decomposition
+        if self.weight_decomp is None:
+            weights = self.weights
+        elif self.weight_decomp == 'basis':
+            weights = torch.einsum('rb, bio -> rio', self.comps, self.bases)
+        elif self.weight_decomp == 'block':
+            pass
+        else:
+            raise NotImplementedError(f'{self.weight_decomp} decomposition has not been implemented')
+
+        # Define edge dropout rate for self-loops
         if self.training and self.edge_dropout["self_loop_type"] != 'schlichtkrull-dropout':
             self_loop_keep_prob = 1 - self.edge_dropout["self_loop"]
         else:
@@ -516,7 +486,7 @@ class RelationalGraphConvolutionRP(Module):
                 triples, num_nodes, original_num_relations, self_loop_keep_prob, device=device)
             triples_plus = torch.cat([triples, inverse_triples, self_loop_triples], dim=0)
 
-        # Stack adjacency matrices (vertically/horizontally)
+        # Stack adjacency matrices either vertically or horizontally
         adj_indices, adj_size = stack_matrices(
             triples_plus,
             num_nodes,
@@ -545,19 +515,14 @@ class RelationalGraphConvolutionRP(Module):
         else:
             adj = torch.sparse.FloatTensor(indices=adj_indices.t(), values=vals, size=adj_size)
 
-        # TODO - Clean up
         if self.in_features is None:
-            if self.edge_dropout["self_loop_type"] == 'schlichtkrull-dropout':
-                raise NotImplementedError()
-            # Featureless
+            # Message passing if no features are given
             if self.weight_decomp == 'block':
                 weights = block_diag(self.blocks)
                 weights = torch.cat([weights, self.blocks_self], dim=0)
             output = torch.mm(adj, weights.view(num_relations * in_dim, out_dim))
         elif self.vertical_stacking:
-            if self.edge_dropout["self_loop_type"] == 'schlichtkrull-dropout':
-                raise NotImplementedError()
-            # Adjacency matrix vertically stacked
+            # Message passing if the adjacency matrix is vertically stacked
             if self.weight_decomp == 'block':
                 weights = block_diag(self.blocks)
                 weights = torch.cat([weights, self.blocks_self], dim=0)
@@ -565,7 +530,7 @@ class RelationalGraphConvolutionRP(Module):
             af = af.view(self.num_relations, self.num_nodes, in_dim)
             output = torch.einsum('rio, rni -> no', weights, af)
         else:
-            # Adjacency matrix horizontally stacked
+            # Message passing if the adjacency matrix is horizontally stacked
             if self.weight_decomp == 'block':
                 n = features.size(0)
                 r = num_relations - 1
