@@ -1,0 +1,20 @@
+cff-version: 1.0.0.
+message: "If you use this deep learning model, please cite it as below."
+authors:
+- family-names: "Thanapalasingam"
+  given-names: "Thiviyan"
+  orcid: "https://orcid.org/0000-0002-0170-9105"
+- family-names: "van Berkel"
+  given-names: "Lucas"
+  orcid: "https://orcid.org/0000-0002-2524-1279"
+- family-names: "Bloem"
+  given-names: "Peter"
+  orcid: "https://orcid.org/0000-0002-0189-5817"
+- family-names: "Groth"
+  given-names: "Paul"
+  orcid: "https://orcid.org/0000-0003-0183-6910"
+title: "Torch-RGCN"
+version: 1.0.0
+doi: arXiv:2107.10015
+date-released: 2021-07-21
+url: "https://github.com/thiviyanT/torch-rgcn"
