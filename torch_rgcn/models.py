@@ -1,4 +1,4 @@
-from torch_rgcn.layers import RelationalGraphConvolution, RelationalGraphConvolutionRP, DistMult
+from torch_rgcn.layers import RelationalGraphConvolutionNC, RelationalGraphConvolutionLP, DistMult
 from torch_rgcn.utils import add_inverse_and_self, select_w_init
 import torch.nn.functional as F
 from torch import nn
@@ -11,15 +11,15 @@ torch.set_printoptions(precision=5)
 ######################################################################################
 
 
-class RelationPredictor(nn.Module):
-    """ Link Prediction via RGCN encoder and DistMult decoder """
+class LinkPredictor(nn.Module):
+    """ Link Prediction using an RGCN-based encoder and DistMult decoder """
     def __init__(self,
                  nnodes=None,
                  nrel=None,
                  nfeat=None,
                  encoder_config=None,
                  decoder_config=None):
-        super(RelationPredictor, self).__init__()
+        super(LinkPredictor, self).__init__()
 
         # Encoder config
         nemb = encoder_config["node_embedding"] if "node_embedding" in encoder_config else None
@@ -47,30 +47,26 @@ class RelationPredictor(nn.Module):
         self.num_rels = nrel
         self.rgcn_layers = rgcn_layers
         self.nemb = nemb
-
         self.decoder_l2_type = decoder_l2_type
         self.decoder_l2 = decoder_l2
 
-        if nemb is not None:
-            self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
-            self.node_embeddings_bias = nn.Parameter(torch.zeros(1, nemb))
-            init = select_w_init(encoder_w_init)
-            init(self.node_embeddings)
-            # Checkpoint 1
-            print('self.node_embeddings')
-            # print('min', torch.min(self.node_embeddings))
-            # print('max', torch.max(self.node_embeddings))
-            # print('mean', torch.mean(self.node_embeddings))
-            # print('std', torch.std(self.node_embeddings))
-            # print('size', self.node_embeddings.size())
+        self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
+        self.node_embeddings_bias = nn.Parameter(torch.zeros(1, nemb))
+        init = select_w_init(encoder_w_init)
+        init(self.node_embeddings)
+        # Checkpoint 1
+        # print('self.node_embeddings')
+        # print('min', torch.min(self.node_embeddings))
+        # print('max', torch.max(self.node_embeddings))
+        # print('mean', torch.mean(self.node_embeddings))
+        # print('std', torch.std(self.node_embeddings))
+        # print('size', self.node_embeddings.size())
 
-        if nfeat is None:
-            nfeat = self.nemb
-
-        self.rgc1 = RelationalGraphConvolutionRP(
+        # Encoder
+        self.rgc1 = RelationalGraphConvolutionLP(
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
-            in_features=nfeat,
+            in_features=nemb,
             out_features=nhid1,
             edge_dropout=edge_dropout,
             decomposition=decomposition,
@@ -80,7 +76,7 @@ class RelationPredictor(nn.Module):
             b_init=encoder_b_init
         )
         if rgcn_layers == 2:
-            self.rgc2 = RelationalGraphConvolutionRP(
+            self.rgc2 = RelationalGraphConvolutionLP(
                 num_nodes=nnodes,
                 num_relations=nrel * 2 + 1,
                 in_features=nhid1,
@@ -94,15 +90,13 @@ class RelationPredictor(nn.Module):
             )
 
         # Decoder
-        out_feat = nemb  # TODO sort this out
-        self.scoring_function = DistMult(nrel, out_feat, nnodes, nrel, decoder_w_init, decoder_gain, decoder_b_init)
+        self.scoring_function = DistMult(nrel, nemb, nnodes, nrel, decoder_w_init, decoder_gain, decoder_b_init)
 
     def compute_penalty(self, batch, x):
         """ Compute L2 penalty for decoder """
         if self.decoder_l2 == 0.0:
             return 0
 
-        # TODO Clean this up
         if self.decoder_l2_type == 'schlichtkrull-l2':
             return self.scoring_function.s_penalty(batch, x)
         else:
@@ -173,7 +167,7 @@ class NodeClassifier(nn.Module):
             # Add inverse relations and self-loops to triples
             self.register_buffer('triples_plus', add_inverse_and_self(triples, nnodes, nrel))
 
-        self.rgc1 = RelationalGraphConvolution(
+        self.rgc1 = RelationalGraphConvolutionNC(
             triples=self.triples_plus,
             num_nodes=nnodes,
             num_relations=nrel * 2 + 1,
@@ -184,7 +178,7 @@ class NodeClassifier(nn.Module):
             vertical_stacking=False
         )
         if nlayers == 2:
-            self.rgc2 = RelationalGraphConvolution(
+            self.rgc2 = RelationalGraphConvolutionNC(
                 triples=self.triples_plus,
                 num_nodes=nnodes,
                 num_relations=nrel * 2 + 1,
@@ -211,7 +205,7 @@ class NodeClassifier(nn.Module):
 ######################################################################################
 
 
-class CompressionRelationPredictor(RelationPredictor):
+class CompressionRelationPredictor(LinkPredictor):
     """ Link prediction model with a bottleneck architecture within the encoder and DistMult decoder """
     def __init__(self,
                  nnodes=None,
@@ -275,7 +269,7 @@ class EmbeddingNodeClassifier(NodeClassifier):
             .__init__(triples, nnodes, nrel, nfeat, nhid, 1, nclass, edge_dropout, decomposition)
 
         # This model has a custom first layer
-        self.rgcn_no_hidden = RelationalGraphConvolution(triples=self.triples_plus,
+        self.rgcn_no_hidden = RelationalGraphConvolutionNC(triples=self.triples_plus,
                                                          num_nodes=nnodes,
                                                          num_relations=nrel * 2 + 1,
                                                          in_features=nfeat,
@@ -283,7 +277,7 @@ class EmbeddingNodeClassifier(NodeClassifier):
                                                          edge_dropout=edge_dropout,
                                                          decomposition=decomposition,
                                                          vertical_stacking=False,
-                                                         no_hidden=True)
+                                                         diag_weight_matrix=True)
 
         # Node embeddings
         self.node_embeddings = nn.Parameter(torch.FloatTensor(nnodes, nemb))
