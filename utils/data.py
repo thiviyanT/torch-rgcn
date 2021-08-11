@@ -10,6 +10,7 @@ def locate_file(filepath):
     directory = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     return directory + '/' + filepath
 
+
 def st(node):
     """
     Maps an rdflib node to a unique string. We use str(node) for URIs (so they can be matched to the classes) and
@@ -39,13 +40,13 @@ def add_neighbors(set, graph, node, depth=2):
         set.add((s, p, o))
         add_neighbors(set, graph, s, depth=depth-1)
 
+
 def load_strings(file):
     """ Read triples from file """
     with open(file, 'r') as f:
         return [line.split() for line in f]
 
 
-# TODO: May need to rewrite this without RDFlib - Low priority
 def load_node_classification_data(name, use_test_set=False, limit=None, enable_cache=True, val_prop=0.4, prune=False):
     """
     Load knowledge graphs for node classification experiment.
@@ -193,7 +194,7 @@ def load_link_prediction_data(name, use_test_set=False, limit=None):
     :param name: Dataset name ('aifb', 'am', 'bgs' or 'mutag')
     :param use_test_set: If true, load the canonical test set, otherwise load validation set from file.
     :param limit: If set, only the first n triples are used.
-    :return: Relation prediction test and train sets:
+    :return: Link prediction test and train sets:
               - train: list of edges [subject, predicate object]
               - test: list of edges [subject, predicate object]
               - all_triples: sets of tuples (subject, predicate object)
