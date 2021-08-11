@@ -3,16 +3,16 @@ import random
 import torch
 
 
-def schlichtkrull_std(tensor, gain):
+def schlichtkrull_std(shape, gain):
     """
     a = \text{gain} \times \frac{3}{\sqrt{\text{fan\_in} + \text{fan\_out}}}
     """
-    fan_in, fan_out = tensor.shape[0], tensor.shape[1]
+    fan_in, fan_out = shape[0], shape[1]
     return gain * 3.0 / sqrt(float(fan_in + fan_out))
 
-def schlichtkrull_normal_(tensor, gain=1.):
+def schlichtkrull_normal_(tensor, shape, gain=1.):
     """Fill the input `Tensor` with values according to the Schlichtkrull method, using a normal distribution."""
-    std = schlichtkrull_std(tensor, gain)
+    std = schlichtkrull_std(shape, gain)
     with torch.no_grad():
         return tensor.normal_(0.0, std)
 
